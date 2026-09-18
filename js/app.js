@@ -176,7 +176,7 @@ function renderApp() {
     let layoutHTML = `
         <div class="w-64 bg-sidebar text-white flex flex-col transition-all duration-300 flex-shrink-0 hidden md:flex">
             <div class="p-6 border-b border-gray-700 flex items-center gap-3">
-                <div class="w-8 h-8 rounded bg-primary flex items-center justify-center font-bold">B</div>
+                <img src="assets/biomont-logo.png" alt="Biomont" class="w-10 h-8 object-contain" />
                 <div><h2 class="text-sm font-bold leading-tight">BIOREQ</h2><p class="text-xs text-gray-400">Requerimientos de materiales</p></div>
             </div>
             <div class="p-4">
@@ -197,7 +197,7 @@ function renderApp() {
         <div class="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
             <header class="md:hidden bg-white shadow-sm flex items-center justify-between p-4 z-10">
                 <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded bg-primary flex items-center justify-center font-bold text-white text-xs">B</div>
+                    <img src="assets/biomont-logo.png" alt="Biomont" class="w-9 h-6 object-contain" />
                     <span class="font-semibold text-sm">BIOREQ</span>
                 </div>
                 <div class="flex items-center gap-3">
@@ -243,9 +243,7 @@ function renderLoginView() {
         <div class="min-h-screen flex items-center justify-center w-full bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
             <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-lg border border-gray-100">
                 <div class="text-center">
-                    <div class="mx-auto h-16 w-16 bg-primary rounded-full flex items-center justify-center">
-                        <i class="fas fa-box-open text-white text-3xl"></i>
-                    </div>
+                    <img src="assets/biomont-logo.png" alt="Biomont" class="mx-auto h-20 w-56 object-contain" />
                     <h2 class="mt-6 text-3xl font-extrabold text-gray-900">BIOREQ</h2>
                     <p class="mt-2 text-sm text-gray-600">Gestión digital de requerimientos para desarrollo</p>
                 </div>
