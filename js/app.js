@@ -4,6 +4,10 @@ function generateReqNumber() {
     return `REQ-${num}`;
 }
 
+function getNextRequestNumber() {
+    return `REQ-${String(db.reqCounter).padStart(6, '0')}`;
+}
+
 function getCurrentDateTime() {
     const now = new Date();
     const day = String(now.getDate()).padStart(2, '0');
@@ -172,8 +176,8 @@ function renderApp() {
     let layoutHTML = `
         <div class="w-64 bg-sidebar text-white flex flex-col transition-all duration-300 flex-shrink-0 hidden md:flex">
             <div class="p-6 border-b border-gray-700 flex items-center gap-3">
-                <div class="w-8 h-8 rounded bg-primary flex items-center justify-center font-bold">SR</div>
-                <div><h2 class="text-sm font-bold leading-tight">Sistema Req.</h2><p class="text-xs text-gray-400">Materiales DF</p></div>
+                <div class="w-8 h-8 rounded bg-primary flex items-center justify-center font-bold">B</div>
+                <div><h2 class="text-sm font-bold leading-tight">BIOREQ</h2><p class="text-xs text-gray-400">Requerimientos de materiales</p></div>
             </div>
             <div class="p-4">
                 <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Usuario Actual</div>
@@ -193,8 +197,8 @@ function renderApp() {
         <div class="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
             <header class="md:hidden bg-white shadow-sm flex items-center justify-between p-4 z-10">
                 <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded bg-primary flex items-center justify-center font-bold text-white text-xs">SR</div>
-                    <span class="font-semibold text-sm">Sistema Req.</span>
+                    <div class="w-6 h-6 rounded bg-primary flex items-center justify-center font-bold text-white text-xs">B</div>
+                    <span class="font-semibold text-sm">BIOREQ</span>
                 </div>
                 <div class="flex items-center gap-3">
                      <span class="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600">${currentUser.role}</span>
@@ -242,7 +246,7 @@ function renderLoginView() {
                     <div class="mx-auto h-16 w-16 bg-primary rounded-full flex items-center justify-center">
                         <i class="fas fa-box-open text-white text-3xl"></i>
                     </div>
-                    <h2 class="mt-6 text-3xl font-extrabold text-gray-900">Sistema de Requerimiento</h2>
+                    <h2 class="mt-6 text-3xl font-extrabold text-gray-900">BIOREQ</h2>
                     <p class="mt-2 text-sm text-gray-600">Gestión digital de requerimientos para desarrollo</p>
                 </div>
                 <form id="login-form" class="mt-8 space-y-6" onsubmit="handleLogin(event)">
@@ -431,14 +435,18 @@ function renderForm() {
                 
                 <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">1. Información General</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Descripción *</label><textarea id="description" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('description')}</textarea></div>
+                    <div><label class="block text-sm font-medium">N° de solicitud</label><input type="text" readonly value="${val('reqNumber') || getNextRequestNumber()}" class="mt-1 block w-full border-gray-200 bg-gray-50 rounded border p-2 text-gray-600"></div>
+                    <div><label class="block text-sm font-medium">Fecha de solicitud</label><input type="text" readonly value="${val('date') || getCurrentDateTime()}" class="mt-1 block w-full border-gray-200 bg-gray-50 rounded border p-2 text-gray-600"></div>
+                </div></div>
+
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">2. Descripción del Requerimiento</h3></div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><label class="block text-sm font-medium">Cantidad de muestra *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
-                    <div><label class="block text-sm font-medium">Unidad *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
+                    <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">2. Información del Producto</h3></div>
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">3. Información del Producto</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre *</label><input type="text" id="productName" required value="${val('productName')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
@@ -446,8 +454,10 @@ function renderForm() {
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Responsable *</label><input type="text" id="responsible" required value="${val('responsible') || currentUser.name}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">3. Características</h3></div>
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">4. Información complementaria</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Descripción *</label><textarea id="description" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('description')}</textarea></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Uso destinado *</label><textarea id="intendedUse" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('intendedUse')}</textarea></div>
                     <div><label class="block text-sm font-medium">Tamaño de partícula</label><input type="text" id="particleSize" value="${val('particleSize')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Working estándar *</label><select id="workingStandard" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="SI" ${val('workingStandard')==='SI'?'selected':''}>SI</option><option value="NO" ${val('workingStandard')==='NO'?'selected':''}>NO</option></select></div>
@@ -455,7 +465,7 @@ function renderForm() {
                     <div><label class="block text-sm font-medium">Cant. lotes industriales</label><input type="number" id="industrialLotQuantity" step="0.01" value="${val('industrialLotQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">4. Observaciones</h3></div>
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">5. Observaciones</h3></div>
                 <div class="p-6"><textarea id="observations" class="mt-1 block w-full border-gray-300 rounded border p-2">${val('observations')}</textarea></div></div>
 
                 <div class="fixed bottom-0 left-0 md:left-64 right-0 bg-white border-t p-4 flex justify-end gap-4 shadow-lg z-20">
@@ -484,18 +494,20 @@ function renderDetail(id) {
         `);
     } else if (currentUser.role === ROLES.LOG && req.status === STATUS.APROBACION_PENDIENTE_LOG) {
         actionsHtml = actBox(`
-            <button onclick="handleAction('${req.id}', 'cancelar')" class="bg-gray-100 px-4 py-2 rounded border">Cancelar</button>
             <button onclick="handleAction('${req.id}', 'observar')" class="bg-red-600 text-white px-4 py-2 rounded">Observar</button>
             <button onclick="handleAction('${req.id}', 'aprobar_log')" class="bg-green-600 text-white px-4 py-2 rounded">Aprobar</button>
         `);
     }
 
     const hist = db.history.filter(h => h.requestId === req.id).sort((a,b) => b.id.localeCompare(a.id));
+    const creator = db.history.find(h => h.requestId === req.id && h.action === 'crear');
+    const approvers = db.history.filter(h => h.requestId === req.id && h.action === 'aprobar');
+    const auditSummary = `<div class="mb-5 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm"><div class="rounded bg-blue-50 border border-blue-100 p-3"><span class="block text-xs uppercase text-blue-700 font-semibold">Creado por</span><span class="font-medium">${creator ? creator.userName : '-'}</span></div><div class="rounded bg-green-50 border border-green-100 p-3"><span class="block text-xs uppercase text-green-700 font-semibold">Aprobaciones</span><span class="font-medium">${approvers.length ? approvers.map(h => h.userName).join(' · ') : 'Pendiente'}</span></div></div>`;
     const historyHtml = hist.map(h => `
         <li class="relative pb-5">
             <div class="relative flex space-x-3">
                 <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
-                    <div><p class="text-sm text-gray-500"><span class="font-medium text-gray-900">${h.userName}</span> cambió a ${getStatusBadge(h.newStatus)}</p>
+                    <div><p class="text-sm text-gray-500"><span class="font-medium text-gray-900">${h.userName}</span> ${h.action === 'crear' ? 'creó el requerimiento' : h.action === 'aprobar' ? 'aprobó el requerimiento' : h.action === 'cancelar' ? 'canceló el requerimiento' : 'registró la acción'}: ${getStatusBadge(h.newStatus)}</p>
                     ${h.comment ? `<p class="mt-1 text-sm bg-gray-50 p-2 rounded border">"${h.comment}"</p>` : ''}</div>
                     <div class="text-right text-xs text-gray-500">${h.timestamp}</div>
                 </div>
@@ -529,8 +541,8 @@ function renderDetail(id) {
             </div>
             ${actionsHtml}
             <div class="mt-8 bg-white shadow rounded-lg border">
-                <div class="px-4 py-5 bg-gray-50 border-b"><h3 class="text-lg font-medium">Historial</h3></div>
-                <div class="p-6"><ul>${historyHtml}</ul></div>
+                <div class="px-4 py-5 bg-gray-50 border-b"><h3 class="text-lg font-medium">Bitácora del requerimiento</h3></div>
+                <div class="p-6">${auditSummary}<ul>${historyHtml}</ul></div>
             </div>
         </div>
     `;
@@ -579,6 +591,13 @@ function executeFormSave() {
 function handleAction(reqId, actionStr) {
     if (actionStr === 'aprobar_sgid') openModal('Aprobar', '<p>Se derivará a LOG.</p>', () => changeStatus(reqId, STATUS.APROBACION_PENDIENTE_LOG, 'aprobar', 'Aprobado SGID'));
     else if (actionStr === 'aprobar_log') openModal('Aprobar (LOG)', '<p>Aprobación final.</p>', () => changeStatus(reqId, STATUS.APROBADO, 'aprobar', 'Aprobado LOG'));
+    else if (actionStr === 'cancelar') {
+        openModal('Cancelar requerimiento', '<p class="mb-3">El requerimiento se marcará como cancelado y quedará registrado en la bitácora.</p><textarea id="cancel-comment" placeholder="Motivo de cancelación (obligatorio)" class="w-full border rounded p-2"></textarea>', () => {
+            const comment = document.getElementById('cancel-comment').value.trim();
+            if (comment) changeStatus(reqId, STATUS.CANCELADO, 'cancelar', comment);
+            else showToast('El motivo de cancelación es obligatorio', 'error');
+        }, 'Cancelar requerimiento', true);
+    }
     else if (actionStr === 'observar') {
         openModal('Observar', '<textarea id="obs-comment" class="w-full border rounded p-2"></textarea>', () => {
             const c = document.getElementById('obs-comment').value;
