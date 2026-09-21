@@ -1,33 +1,26 @@
 // --- 2. UTILITY FUNCTIONS ---
-function getCodePrefix(status) {
-    if (status === STATUS.BORRADOR) return 'TEM';
-    if (status === STATUS.EN_REVISION) return 'SOL';
-    if (status === STATUS.APROBADO) return 'REQ';
-    return null;
+let draftCodePreview = 'TEM-Generando...';
+
+async function loadDatabase() {
+    const response = await fetch('/api/bioreq');
+    if (!response.ok) throw new Error('No se pudo cargar la información de Supabase.');
+    const data = await response.json();
+    db.requests = data.requests;
+    db.history = data.history;
 }
 
-function getCodePeriod() {
-    const now = new Date();
-    return `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
+async function loadDraftCodePreview() {
+    try {
+        const response = await fetch('/api/bioreq?preview=TEM');
+        const data = await response.json();
+        draftCodePreview = data.code || draftCodePreview;
+        if (currentView === 'form' && !viewContextId) renderApp();
+    } catch (error) {
+        console.warn('No se pudo preparar el código de borrador.', error);
+    }
 }
 
-function generateRequestCode(status) {
-    const prefix = getCodePrefix(status);
-    if (!prefix) return null;
-    const period = getCodePeriod();
-    const counterKey = `${prefix}-${period}`;
-    const next = (db.codeCounters[counterKey] || 0) + 1;
-    db.codeCounters[counterKey] = next;
-    return `${prefix}-${period}${String(next).padStart(2, '0')}`;
-}
-
-function getNextRequestCode(status = STATUS.BORRADOR) {
-    const prefix = getCodePrefix(status);
-    if (!prefix) return '';
-    const period = getCodePeriod();
-    const next = (db.codeCounters[`${prefix}-${period}`] || 0) + 1;
-    return `${prefix}-${period}${String(next).padStart(2, '0')}`;
-}
+function getNextRequestCode() { return draftCodePreview; }
 
 function getCurrentDateTime() {
     const now = new Date();
@@ -91,53 +84,16 @@ function getPriorityBadge(priorityId) {
 }
 
 // --- 3. DATABASE OPERATIONS ---
-function saveRequest(data, action) {
-    let req = null;
-    const now = getCurrentDateTime();
-    
-    if (data.id) {
-        req = db.requests.find(r => r.id === data.id);
-        if (!req) return null;
-        const oldStatus = req.status;
-        Object.assign(req, data);
-        req.updatedAt = now;
-        
-        if(oldStatus !== req.status) {
-            const nextPrefix = getCodePrefix(req.status);
-            if (nextPrefix && !req.reqNumber.startsWith(`${nextPrefix}-`)) req.reqNumber = generateRequestCode(req.status);
-            addHistory(req.id, oldStatus, req.status, action, data._comment || '', req.reqNumber);
-        }
-    } else {
-        req = {
-            ...data,
-            id: 'req_' + Date.now(),
-            reqNumber: generateRequestCode(data.status),
-            date: now,
-            requesterId: currentUser.id,
-            createdAt: now,
-            updatedAt: now
-        };
-        db.requests.push(req);
-        addHistory(req.id, null, req.status, action, 'Solicitud creada', req.reqNumber);
-    }
-    persistDatabase();
-    return req;
-}
-
-function addHistory(reqId, oldStatus, newStatus, action, comment, requestCode = null) {
-    db.history.push({
-        id: 'hist_' + Date.now() + Math.random(),
-        requestId: reqId,
-        oldStatus: oldStatus,
-        newStatus: newStatus,
-        action: action,
-        userId: currentUser.id,
-        userRole: currentUser.role,
-        userName: currentUser.name,
-        comment: comment,
-        requestCode: requestCode,
-        timestamp: getCurrentDateTime()
+async function saveRequest(data, action) {
+    const response = await fetch('/api/bioreq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, action, user: currentUser })
     });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'No se pudo guardar el requerimiento.');
+    await loadDatabase();
+    return result.request;
 }
 
 function getRequestsByRole() {
@@ -190,6 +146,7 @@ function navigateTo(view, id = null) {
     viewContextId = id;
     if (view !== 'detail') detailTab = 'detail';
     renderApp();
+    if (view === 'form' && !id) loadDraftCodePreview();
 }
 
 function setDetailTab(tab) {
@@ -607,7 +564,7 @@ function submitForm(intent) {
 
 function handleFormSubmit(e) { e.preventDefault(); submitForm(formSubmitIntent || 'draft'); }
 
-function executeFormSave() {
+async function executeFormSave() {
     const data = {
         id: document.getElementById('req-id').value || null,
         articleType: document.getElementById('articleType').value,
@@ -631,8 +588,12 @@ function executeFormSave() {
     if (formSubmitIntent === 'draft') { data.status = STATUS.BORRADOR; data._comment = 'Guardado como borrador'; } 
     else if (formSubmitIntent === 'send') { data.status = STATUS.EN_REVISION; data._comment = 'Enviado a revisión SGID/CDF'; }
 
-    const saved = saveRequest(data, data.id ? 'guardar' : 'crear');
-    if (saved) { showToast('Acción exitosa'); navigateTo('dashboard'); }
+    try {
+        const saved = await saveRequest(data, data.id ? 'guardar' : 'crear');
+        if (saved) { showToast('Acción exitosa'); navigateTo('dashboard'); }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 function handleAction(reqId, actionStr) {
@@ -653,28 +614,41 @@ function handleAction(reqId, actionStr) {
     }
 }
 
-function changeStatus(reqId, newStatus, action, comment) {
+async function changeStatus(reqId, newStatus, action, comment) {
     const req = db.requests.find(r => r.id === reqId);
-    const oldStatus = req.status;
-    req.status = newStatus;
-    const nextPrefix = getCodePrefix(newStatus);
-    if (nextPrefix && !req.reqNumber.startsWith(`${nextPrefix}-`)) req.reqNumber = generateRequestCode(newStatus);
-    req.updatedAt = getCurrentDateTime();
-    addHistory(req.id, oldStatus, newStatus, action, comment, req.reqNumber);
-    persistDatabase();
-    showToast(`Estado: ${newStatus}`);
-    navigateTo('dashboard');
+    try {
+        await saveRequest({ ...req, status: newStatus, _comment: comment }, action);
+        showToast(`Estado: ${newStatus}`);
+        navigateTo('dashboard');
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 // --- 7. AUTH & HELPERS ---
-function handleLogin(e) {
+async function handleLogin(e) {
     e.preventDefault();
     const user = db.users.find(x => x.username === document.getElementById('username').value && x.password === document.getElementById('password').value);
-    if (user) { currentUser = user; document.getElementById('login-error').classList.add('hidden'); currentView = 'dashboard'; renderApp(); }
+    if (user) {
+        currentUser = user;
+        document.getElementById('login-error').classList.add('hidden');
+        try {
+            await loadDatabase();
+            currentView = 'dashboard';
+            renderApp();
+        } catch (error) {
+            document.getElementById('login-error').textContent = error.message;
+            document.getElementById('login-error').classList.remove('hidden');
+            currentUser = null;
+        }
+    }
     else { document.getElementById('login-error').textContent = 'Credenciales incorrectas'; document.getElementById('login-error').classList.remove('hidden'); }
 }
 function fillLogin(user) { document.getElementById('username').value = user; document.getElementById('password').value = '123'; }
 function logout() { currentUser = null; currentView = 'dashboard'; renderApp(); }
 function getLastObservation(reqId) { const obs = db.history.filter(h => h.requestId === reqId && h.newStatus === STATUS.OBSERVADO).reverse(); return obs.length ? obs[0].comment : ''; }
 
-window.onload = renderApp;
+window.onload = async () => {
+    try { await loadDatabase(); } catch (error) { console.warn(error); }
+    renderApp();
+};

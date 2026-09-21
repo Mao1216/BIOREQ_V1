@@ -32,35 +32,8 @@ const INITIAL_USERS = [
     { id: 'u3', username: 'log01', password: '123', role: ROLES.LOG, name: 'Carlos Ruiz (LOG)' }
 ];
 
-const STORAGE_KEY = 'bioreq_database_v1';
-
-function createEmptyDatabase() {
-    return {
-        users: INITIAL_USERS,
-        requests: [],
-        history: [],
-        codeCounters: {}
-    };
-}
-
-function loadDatabase() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-        if (saved && Array.isArray(saved.requests) && Array.isArray(saved.history)) {
-            return { ...createEmptyDatabase(), ...saved, users: INITIAL_USERS, codeCounters: saved.codeCounters || {} };
-        }
-    } catch (error) {
-        console.warn('No se pudo recuperar la base local de BIOREQ.', error);
-    }
-    return createEmptyDatabase();
-}
-
-function persistDatabase() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-}
-
-// Base de datos local persistente: conserva solicitudes, bitácoras y correlativos por navegador.
-let db = loadDatabase();
+// La información operativa se consulta y guarda exclusivamente en Supabase mediante /api/bioreq.
+let db = { users: INITIAL_USERS, requests: [], history: [] };
 
 // Current App State
 let currentUser = null;
