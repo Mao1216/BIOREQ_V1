@@ -54,8 +54,8 @@ create index if not exists bioreq_sessions_user_idx on public.bioreq_sessions (u
 
 insert into public.bioreq_users (id, username, role, full_name, password_hash)
 values
-  ('u1', 'andf01', 'ANDF/ADF', 'Juan Pérez (ANDF/ADF)', extensions.crypt('123', extensions.gen_salt('bf'))),
-  ('u2', 'sgid01', 'SGID/CDF', 'María Gómez (SGID/CDF)', extensions.crypt('123', extensions.gen_salt('bf'))),
+  ('u1', 'andf01', 'ANDF_ADF', 'Juan Pérez (ANDF/ADF)', extensions.crypt('123', extensions.gen_salt('bf'))),
+  ('u2', 'sgid01', 'SGID_CDF', 'María Gómez (SGID/CDF)', extensions.crypt('123', extensions.gen_salt('bf'))),
   ('u3', 'log01', 'LOG', 'Carlos Ruiz (LOG)', extensions.crypt('123', extensions.gen_salt('bf')))
 on conflict (username) do update set
   role = excluded.role,
