@@ -1,5 +1,8 @@
 // --- 2. UTILITY FUNCTIONS ---
 let draftCodePreview = 'TEM-Generando...';
+let autosaveTimer = null;
+let autosaveInProgress = false;
+let autosaveDirty = false;
 
 async function loadDatabase() {
     const response = await fetch('/api/bioreq', {
@@ -203,6 +206,7 @@ function renderApp() {
         </div>
     `;
     app.innerHTML = layoutHTML;
+    if (currentView === 'form') setupFormAutosave();
 }
 
 function renderSidebarMenu() {
@@ -423,6 +427,7 @@ function renderForm() {
             
             <form id="req-form" onsubmit="handleFormSubmit(event)" class="space-y-6">
                 <input type="hidden" id="req-id" value="${val('id')}">
+                <input type="hidden" id="req-status" value="${isEdit ? reqData.status : STATUS.BORRADOR}">
                 
                 <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Descripción del Requerimiento</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -455,6 +460,7 @@ function renderForm() {
                 <div class="p-6"><textarea id="observations" class="mt-1 block w-full border-gray-300 rounded border p-2">${val('observations')}</textarea></div></div>
 
                 <div class="fixed bottom-0 left-0 md:left-64 right-0 bg-white border-t p-4 flex justify-end gap-4 shadow-lg z-20">
+                    <span id="autosave-state" class="mr-auto self-center text-xs text-gray-500">Los cambios se guardan automáticamente</span>
                     <button type="button" onclick="submitForm('draft')" class="bg-white border text-gray-700 px-6 py-2 rounded-md shadow-sm font-medium">Guardar Borrador</button>
                     <button type="button" onclick="submitForm('send')" class="bg-primary text-white px-6 py-2 rounded-md shadow-sm font-medium">${isObserved ? 'Enviar Subsanación' : 'Enviar a Aprobación'}</button>
                 </div>
@@ -557,19 +563,8 @@ function renderDetail(id) {
 
 // --- 6. ACTION HANDLERS ---
 let formSubmitIntent = null;
-function submitForm(intent) {
-    formSubmitIntent = intent;
-    const form = document.getElementById('req-form');
-    if (form.checkValidity()) {
-        if (intent === 'send') openModal('Enviar a aprobación', '<p>¿Está seguro de enviar este requerimiento?</p>', executeFormSave);
-        else executeFormSave();
-    } else form.reportValidity();
-}
-
-function handleFormSubmit(e) { e.preventDefault(); submitForm(formSubmitIntent || 'draft'); }
-
-async function executeFormSave() {
-    const data = {
+function getFormData(status) {
+    return {
         id: document.getElementById('req-id').value || null,
         articleType: document.getElementById('articleType').value,
         description: document.getElementById('description').value,
@@ -587,10 +582,64 @@ async function executeFormSave() {
         casNumber: document.getElementById('casNumber').value,
         industrialLotQuantity: document.getElementById('industrialLotQuantity').value,
         observations: document.getElementById('observations').value,
+        status
     };
+}
 
-    if (formSubmitIntent === 'draft') { data.status = STATUS.BORRADOR; data._comment = 'Guardado como borrador'; } 
-    else if (formSubmitIntent === 'send') { data.status = STATUS.EN_REVISION; data._comment = 'Enviado a revisión SGID/CDF'; }
+function setupFormAutosave() {
+    const form = document.getElementById('req-form');
+    if (!form) return;
+    form.addEventListener('input', queueFormAutosave);
+    form.addEventListener('change', queueFormAutosave);
+}
+
+function queueFormAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveDirty = true;
+    const state = document.getElementById('autosave-state');
+    if (state) state.textContent = 'Guardando cambios…';
+    autosaveTimer = setTimeout(saveFormAutomatically, 650);
+}
+
+async function saveFormAutomatically() {
+    if (!currentUser || currentView !== 'form') return;
+    if (autosaveInProgress) {
+        autosaveTimer = setTimeout(saveFormAutomatically, 300);
+        return;
+    }
+    autosaveInProgress = true;
+    autosaveDirty = false;
+    const state = document.getElementById('autosave-state');
+    try {
+        const status = document.getElementById('req-status').value || STATUS.BORRADOR;
+        const saved = await saveRequest(getFormData(status), 'guardar');
+        document.getElementById('req-id').value = saved.id;
+        document.getElementById('req-status').value = saved.status;
+        if (state) state.textContent = `Guardado en Supabase · ${new Date().toLocaleTimeString()}`;
+    } catch (error) {
+        if (state) state.textContent = 'No se pudo guardar. Se reintentará al modificar el formulario.';
+    } finally {
+        autosaveInProgress = false;
+        if (autosaveDirty) autosaveTimer = setTimeout(saveFormAutomatically, 300);
+    }
+}
+
+function submitForm(intent) {
+    formSubmitIntent = intent;
+    const form = document.getElementById('req-form');
+    if (form.checkValidity()) {
+        if (intent === 'send') openModal('Enviar a aprobación', '<p>¿Está seguro de enviar este requerimiento?</p>', executeFormSave);
+        else executeFormSave();
+    } else form.reportValidity();
+}
+
+function handleFormSubmit(e) { e.preventDefault(); submitForm(formSubmitIntent || 'draft'); }
+
+async function executeFormSave() {
+    clearTimeout(autosaveTimer);
+    const status = formSubmitIntent === 'send' ? STATUS.EN_REVISION : STATUS.BORRADOR;
+    const data = getFormData(status);
+    data._comment = formSubmitIntent === 'send' ? 'Enviado a revisión SGID/CDF' : 'Guardado como borrador';
 
     try {
         const saved = await saveRequest(data, data.id ? 'guardar' : 'crear');

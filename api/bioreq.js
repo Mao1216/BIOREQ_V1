@@ -124,6 +124,7 @@ module.exports = async (req, res) => {
 
         const { data, action } = req.body || {};
         if (!data) return res.status(400).json({ error: 'Solicitud incompleta.' });
+        const { _comment, ...persistedData } = data;
 
         const now = new Date().toISOString();
         let request;
@@ -140,7 +141,7 @@ module.exports = async (req, res) => {
                 const code = await supabase('rpc/next_bioreq_code', { method: 'POST', body: JSON.stringify({ p_prefix: prefix }) });
                 requestCode = code;
             }
-            const requestData = { ...data, reqNumber: requestCode, updatedAt: now };
+            const requestData = { ...persistedData, reqNumber: requestCode, updatedAt: now };
             delete requestData.id;
             const updated = await supabase(`bioreq_requests?id=eq.${encodeURIComponent(data.id)}`, {
                 method: 'PATCH', prefer: 'return=representation',
@@ -151,7 +152,7 @@ module.exports = async (req, res) => {
             const prefix = prefixForStatus(data.status) || 'TEM';
             const code = await supabase('rpc/next_bioreq_code', { method: 'POST', body: JSON.stringify({ p_prefix: prefix }) });
             const id = `req_${randomUUID()}`;
-            const requestData = { ...data, reqNumber: code, date: now, createdAt: now, updatedAt: now };
+            const requestData = { ...persistedData, reqNumber: code, date: now, createdAt: now, updatedAt: now };
             const created = await supabase('bioreq_requests', {
                 method: 'POST', prefer: 'return=representation',
                 body: JSON.stringify({ id, req_number: code, status: data.status, requester_id: currentUser.id, request_data: requestData })
