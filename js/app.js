@@ -1,11 +1,32 @@
 // --- 2. UTILITY FUNCTIONS ---
-function generateReqNumber() {
-    const num = String(db.reqCounter++).padStart(6, '0');
-    return `REQ-${num}`;
+function getCodePrefix(status) {
+    if (status === STATUS.BORRADOR) return 'TEM';
+    if (status === STATUS.EN_REVISION) return 'SOL';
+    if (status === STATUS.APROBADO) return 'REQ';
+    return null;
 }
 
-function getNextRequestNumber() {
-    return `REQ-${String(db.reqCounter).padStart(6, '0')}`;
+function getCodePeriod() {
+    const now = new Date();
+    return `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function generateRequestCode(status) {
+    const prefix = getCodePrefix(status);
+    if (!prefix) return null;
+    const period = getCodePeriod();
+    const counterKey = `${prefix}-${period}`;
+    const next = (db.codeCounters[counterKey] || 0) + 1;
+    db.codeCounters[counterKey] = next;
+    return `${prefix}-${period}${String(next).padStart(2, '0')}`;
+}
+
+function getNextRequestCode(status = STATUS.BORRADOR) {
+    const prefix = getCodePrefix(status);
+    if (!prefix) return '';
+    const period = getCodePeriod();
+    const next = (db.codeCounters[`${prefix}-${period}`] || 0) + 1;
+    return `${prefix}-${period}${String(next).padStart(2, '0')}`;
 }
 
 function getCurrentDateTime() {
@@ -82,25 +103,28 @@ function saveRequest(data, action) {
         req.updatedAt = now;
         
         if(oldStatus !== req.status) {
-            addHistory(req.id, oldStatus, req.status, action, data._comment || '');
+            const nextPrefix = getCodePrefix(req.status);
+            if (nextPrefix && !req.reqNumber.startsWith(`${nextPrefix}-`)) req.reqNumber = generateRequestCode(req.status);
+            addHistory(req.id, oldStatus, req.status, action, data._comment || '', req.reqNumber);
         }
     } else {
         req = {
             ...data,
             id: 'req_' + Date.now(),
-            reqNumber: generateReqNumber(),
+            reqNumber: generateRequestCode(data.status),
             date: now,
             requesterId: currentUser.id,
             createdAt: now,
             updatedAt: now
         };
         db.requests.push(req);
-        addHistory(req.id, null, req.status, action, 'Solicitud creada');
+        addHistory(req.id, null, req.status, action, 'Solicitud creada', req.reqNumber);
     }
+    persistDatabase();
     return req;
 }
 
-function addHistory(reqId, oldStatus, newStatus, action, comment) {
+function addHistory(reqId, oldStatus, newStatus, action, comment, requestCode = null) {
     db.history.push({
         id: 'hist_' + Date.now() + Math.random(),
         requestId: reqId,
@@ -111,6 +135,7 @@ function addHistory(reqId, oldStatus, newStatus, action, comment) {
         userRole: currentUser.role,
         userName: currentUser.name,
         comment: comment,
+        requestCode: requestCode,
         timestamp: getCurrentDateTime()
     });
 }
@@ -163,6 +188,12 @@ function closeAllModals() {
 function navigateTo(view, id = null) {
     currentView = view;
     viewContextId = id;
+    if (view !== 'detail') detailTab = 'detail';
+    renderApp();
+}
+
+function setDetailTab(tab) {
+    detailTab = tab;
     renderApp();
 }
 
@@ -427,24 +458,20 @@ function renderForm() {
         <div class="max-w-4xl mx-auto pb-20">
             <div class="flex items-center gap-3 mb-6"><button onclick="navigateTo('dashboard')" class="bg-white p-2 rounded-full shadow-sm border"><i class="fas fa-arrow-left"></i></button><div><h1 class="text-2xl font-bold">${isEdit ? 'Editar Requerimiento' : 'Crear Requerimiento'}</h1><p class="text-sm text-gray-500">FICHA 1 - DF</p></div></div>
             ${isObserved ? `<div class="bg-red-50 border-l-4 border-red-500 p-4 mb-6"><h3 class="font-medium text-red-800">Observada</h3><p class="italic text-sm mt-1">"${getLastObservation(reqData.id)}"</p></div>` : ''}
+            <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4 flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Código actual</p><p class="mt-1 text-xl font-bold text-blue-900">${val('reqNumber') || getNextRequestCode()}</p></div><span class="text-xs text-blue-700">Se generará como borrador</span></div>
             
             <form id="req-form" onsubmit="handleFormSubmit(event)" class="space-y-6">
                 <input type="hidden" id="req-id" value="${val('id')}">
                 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">1. Información General</h3></div>
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Descripción del Requerimiento</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label class="block text-sm font-medium">N° de solicitud</label><input type="text" readonly value="${val('reqNumber') || getNextRequestNumber()}" class="mt-1 block w-full border-gray-200 bg-gray-50 rounded border p-2 text-gray-600"></div>
-                    <div><label class="block text-sm font-medium">Fecha de solicitud</label><input type="text" readonly value="${val('date') || getCurrentDateTime()}" class="mt-1 block w-full border-gray-200 bg-gray-50 rounded border p-2 text-gray-600"></div>
-                </div></div>
-
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">2. Descripción del Requerimiento</h3></div>
-                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
                     <div><label class="block text-sm font-medium">Cantidad de muestra *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">3. Información del Producto</h3></div>
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Producto</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre *</label><input type="text" id="productName" required value="${val('productName')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
@@ -452,7 +479,7 @@ function renderForm() {
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Responsable *</label><input type="text" id="responsible" required value="${val('responsible') || currentUser.name}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">4. Información complementaria</h3></div>
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información complementaria</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Descripción *</label><textarea id="description" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('description')}</textarea></div>
@@ -463,7 +490,7 @@ function renderForm() {
                     <div><label class="block text-sm font-medium">Cant. lotes industriales</label><input type="number" id="industrialLotQuantity" step="0.01" value="${val('industrialLotQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">5. Observaciones</h3></div>
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Observaciones</h3></div>
                 <div class="p-6"><textarea id="observations" class="mt-1 block w-full border-gray-300 rounded border p-2">${val('observations')}</textarea></div></div>
 
                 <div class="fixed bottom-0 left-0 md:left-64 right-0 bg-white border-t p-4 flex justify-end gap-4 shadow-lg z-20">
@@ -513,6 +540,15 @@ function renderDetail(id) {
         </li>`).join('');
 
     const Field = (lbl, val) => `<div><dt class="text-xs font-medium text-gray-500 uppercase">${lbl}</dt><dd class="mt-1 text-sm font-medium">${val || '-'}</dd></div>`;
+    const tabClass = (tab) => detailTab === tab ? 'border-primary text-primary bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300';
+    const timelineHtml = [...hist].reverse().map((h, index) => `
+        <li class="relative pl-8 ${index < hist.length - 1 ? 'pb-8' : ''}">
+            <span class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white"><i class="fas ${h.action === 'aprobar' ? 'fa-check' : h.action === 'cancelar' ? 'fa-ban' : 'fa-circle'} text-[8px]"></i></span>
+            <p class="text-sm font-semibold text-gray-900">${h.action === 'crear' ? 'Requerimiento creado' : h.action === 'aprobar' ? 'Requerimiento aprobado' : h.action === 'cancelar' ? 'Requerimiento cancelado' : h.action === 'observar' ? 'Requerimiento observado' : 'Estado actualizado'}</p>
+            <p class="text-sm text-gray-600">${h.userName} · ${h.timestamp}</p>
+            <p class="mt-1 text-xs font-medium text-primary">${h.requestCode || req.reqNumber} · ${h.newStatus}</p>
+            ${h.comment ? `<p class="mt-2 text-sm text-gray-600">${h.comment}</p>` : ''}
+        </li>`).join('');
 
     return `
         <div class="max-w-5xl mx-auto pb-10">
@@ -521,11 +557,18 @@ function renderDetail(id) {
                 <div><h1 class="text-2xl font-bold flex items-center gap-3">${req.reqNumber} ${getStatusBadge(req.status)}</h1></div></div>
             </div>
             
-            <div class="bg-white shadow rounded-lg border">
+            <div class="mb-6 border-b border-gray-200 flex gap-1 overflow-x-auto">
+                <button onclick="setDetailTab('detail')" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap ${tabClass('detail')}"><i class="fas fa-file-alt mr-2"></i>Detalle del requerimiento</button>
+                <button onclick="setDetailTab('history')" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap ${tabClass('history')}"><i class="fas fa-history mr-2"></i>Bitácora</button>
+                <button onclick="setDetailTab('flow')" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap ${tabClass('flow')}"><i class="fas fa-route mr-2"></i>Flujo de revisión</button>
+            </div>
+
+            <div class="${detailTab === 'detail' ? '' : 'hidden'} bg-white shadow rounded-lg border">
                 <div class="px-4 py-5 bg-gray-50 border-b"><h3 class="text-lg font-medium">Detalle del Requerimiento</h3></div>
                 <div class="p-6">
                     <dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">
                         ${Field('Tipo', req.articleType)} ${Field('Cantidad', req.sampleQuantity + ' ' + req.unit)} ${Field('Prioridad', req.priority)}
+                        ${Field('Gestión de proveedores', req.supplierStrategy === 'PROVEEDOR_EXISTENTE' ? 'Proveedor existente' : req.supplierStrategy === 'NUEVOS_PROVEEDORES' ? 'Buscar nuevos proveedores' : '-')}
                         <div class="md:col-span-3">${Field('Descripción', req.description)}</div>
                     </dl>
                     <dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">
@@ -537,10 +580,15 @@ function renderDetail(id) {
                     </dl>
                 </div>
             </div>
-            ${actionsHtml}
-            <div class="mt-8 bg-white shadow rounded-lg border">
+            ${detailTab === 'detail' ? actionsHtml : ''}
+            <div class="${detailTab === 'history' ? '' : 'hidden'} mt-8 bg-white shadow rounded-lg border">
                 <div class="px-4 py-5 bg-gray-50 border-b"><h3 class="text-lg font-medium">Bitácora del requerimiento</h3></div>
-                <div class="p-6">${auditSummary}<ul>${historyHtml}</ul></div>
+                <div class="p-6">${auditSummary}<ul class="ml-3 border-l-2 border-blue-200 pl-5">${historyHtml}</ul></div>
+            </div>
+            <div class="${detailTab === 'flow' ? '' : 'hidden'} bg-white shadow rounded-lg border p-6">
+                <h3 class="text-xl font-bold text-gray-900">Flujo de revisión</h3>
+                <p class="mt-1 text-sm text-gray-500">Línea de tiempo completa del requerimiento.</p>
+                <ol class="mt-8 ml-2 border-l-2 border-blue-200">${timelineHtml}</ol>
             </div>
         </div>
     `;
@@ -567,6 +615,7 @@ function executeFormSave() {
         sampleQuantity: document.getElementById('sampleQuantity').value,
         unit: document.getElementById('unit').value,
         priority: document.getElementById('priority').value,
+        supplierStrategy: document.getElementById('supplierStrategy').value,
         productName: document.getElementById('productName').value,
         category: document.getElementById('category').value,
         pharmaceuticalForm: document.getElementById('pharmaceuticalForm').value,
@@ -608,8 +657,11 @@ function changeStatus(reqId, newStatus, action, comment) {
     const req = db.requests.find(r => r.id === reqId);
     const oldStatus = req.status;
     req.status = newStatus;
+    const nextPrefix = getCodePrefix(newStatus);
+    if (nextPrefix && !req.reqNumber.startsWith(`${nextPrefix}-`)) req.reqNumber = generateRequestCode(newStatus);
     req.updatedAt = getCurrentDateTime();
-    addHistory(req.id, oldStatus, newStatus, action, comment);
+    addHistory(req.id, oldStatus, newStatus, action, comment, req.reqNumber);
+    persistDatabase();
     showToast(`Estado: ${newStatus}`);
     navigateTo('dashboard');
 }
