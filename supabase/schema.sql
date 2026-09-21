@@ -5,6 +5,24 @@ create table if not exists public.bioreq_counters (
   primary key (prefix, period)
 );
 
+create extension if not exists pgcrypto with schema extensions;
+
+create table if not exists public.bioreq_users (
+  id text primary key,
+  username text not null unique,
+  role text not null,
+  full_name text not null,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.bioreq_sessions (
+  token text primary key,
+  user_id text not null references public.bioreq_users(id) on delete cascade,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.bioreq_requests (
   id text primary key,
   req_number text not null unique,
@@ -32,6 +50,17 @@ create table if not exists public.bioreq_history (
 create index if not exists bioreq_requests_requester_idx on public.bioreq_requests (requester_id);
 create index if not exists bioreq_requests_status_idx on public.bioreq_requests (status);
 create index if not exists bioreq_history_request_idx on public.bioreq_history (request_id, created_at);
+create index if not exists bioreq_sessions_user_idx on public.bioreq_sessions (user_id, expires_at);
+
+insert into public.bioreq_users (id, username, role, full_name, password_hash)
+values
+  ('u1', 'andf01', 'ANDF/ADF', 'Juan Pérez (ANDF/ADF)', extensions.crypt('123', extensions.gen_salt('bf'))),
+  ('u2', 'sgid01', 'SGID/CDF', 'María Gómez (SGID/CDF)', extensions.crypt('123', extensions.gen_salt('bf'))),
+  ('u3', 'log01', 'LOG', 'Carlos Ruiz (LOG)', extensions.crypt('123', extensions.gen_salt('bf')))
+on conflict (username) do update set
+  role = excluded.role,
+  full_name = excluded.full_name,
+  password_hash = excluded.password_hash;
 
 create or replace function public.next_bioreq_code(p_prefix text)
 returns text
@@ -57,8 +86,23 @@ begin
 end;
 $$;
 
+create or replace function public.authenticate_bioreq_user(p_username text, p_password text)
+returns table (id text, username text, role text, name text)
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select u.id, u.username, u.role, u.full_name as name
+  from public.bioreq_users u
+  where u.username = p_username
+    and u.password_hash = extensions.crypt(p_password, u.password_hash)
+  limit 1;
+$$;
+
 -- Las tablas se acceden únicamente mediante la función /api/bioreq en Vercel.
 -- La clave de servidor no se expone al navegador.
 alter table public.bioreq_counters enable row level security;
+alter table public.bioreq_users enable row level security;
+alter table public.bioreq_sessions enable row level security;
 alter table public.bioreq_requests enable row level security;
 alter table public.bioreq_history enable row level security;

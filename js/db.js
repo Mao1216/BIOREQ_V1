@@ -26,17 +26,13 @@ const LISTS = {
     pharmaForms: ['Tableta', 'Cápsula', 'Jarabe', 'Inyectable', 'Crema', 'Otro']
 };
 
-const INITIAL_USERS = [
-    { id: 'u1', username: 'andf01', password: '123', role: ROLES.ANDF_ADF, name: 'Juan Pérez (ANDF/ADF)' },
-    { id: 'u2', username: 'sgid01', password: '123', role: ROLES.SGID_CDF, name: 'María Gómez (SGID/CDF)' },
-    { id: 'u3', username: 'log01', password: '123', role: ROLES.LOG, name: 'Carlos Ruiz (LOG)' }
-];
-
-// La información operativa se consulta y guarda exclusivamente en Supabase mediante /api/bioreq.
-let db = { users: INITIAL_USERS, requests: [], history: [] };
+// La información operativa y las cuentas se consultan y guardan exclusivamente
+// en Supabase mediante /api/bioreq. No se utiliza almacenamiento del navegador.
+let db = { requests: [], history: [] };
 
 // Current App State
 let currentUser = null;
+let currentSessionToken = null;
 let currentView = 'dashboard';
 let viewContextId = null;
 let currentFilters = { num: '', prod: '', status: '', priority: '', type: '' };

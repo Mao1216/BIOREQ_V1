@@ -1,5 +1,6 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY;
+const { randomUUID, randomBytes } = require('crypto');
 
 function headers(prefer = '') {
     return {
@@ -63,12 +64,46 @@ async function addHistory(entry) {
     });
 }
 
+async function getSession(req) {
+    const token = req.headers['x-bioreq-session'];
+    if (!token) return null;
+    const sessions = await supabase(`bioreq_sessions?token=eq.${encodeURIComponent(token)}&select=user_id,expires_at`);
+    const session = sessions[0];
+    if (!session || new Date(session.expires_at) <= new Date()) return null;
+    const users = await supabase(`bioreq_users?id=eq.${encodeURIComponent(session.user_id)}&select=id,username,role,full_name`);
+    const user = users[0];
+    return user ? { id: user.id, username: user.username, role: user.role, name: user.full_name } : null;
+}
+
 module.exports = async (req, res) => {
     if (!SUPABASE_URL || !SUPABASE_KEY) {
         return res.status(503).json({ error: 'Supabase no está configurado en Vercel.' });
     }
 
     try {
+        if (req.method === 'POST' && req.body?.action === 'login') {
+            const { username, password } = req.body;
+            if (!username || !password) return res.status(400).json({ error: 'Ingresa usuario y contraseña.' });
+            const authenticated = await supabase('rpc/authenticate_bioreq_user', {
+                method: 'POST', body: JSON.stringify({ p_username: username, p_password: password })
+            });
+            const account = authenticated[0];
+            if (!account) return res.status(401).json({ error: 'Credenciales inválidas.' });
+            const sessionToken = randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+            await supabase('bioreq_sessions', {
+                method: 'POST', prefer: 'return=minimal',
+                body: JSON.stringify({ token: sessionToken, user_id: account.id, expires_at: expiresAt })
+            });
+            return res.status(200).json({
+                sessionToken,
+                user: { id: account.id, username: account.username, role: account.role, name: account.name }
+            });
+        }
+
+        const currentUser = await getSession(req);
+        if (!currentUser) return res.status(401).json({ error: 'Sesión no válida o vencida.' });
+
         if (req.method === 'GET') {
             if (req.query.preview) {
                 const prefix = req.query.preview;
@@ -87,8 +122,8 @@ module.exports = async (req, res) => {
 
         if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido.' });
 
-        const { data, action, user } = req.body || {};
-        if (!data || !user) return res.status(400).json({ error: 'Solicitud incompleta.' });
+        const { data, action } = req.body || {};
+        if (!data) return res.status(400).json({ error: 'Solicitud incompleta.' });
 
         const now = new Date().toISOString();
         let request;
@@ -115,11 +150,11 @@ module.exports = async (req, res) => {
         } else {
             const prefix = prefixForStatus(data.status) || 'TEM';
             const code = await supabase('rpc/next_bioreq_code', { method: 'POST', body: JSON.stringify({ p_prefix: prefix }) });
-            const id = `req_${crypto.randomUUID()}`;
+            const id = `req_${randomUUID()}`;
             const requestData = { ...data, reqNumber: code, date: now, createdAt: now, updatedAt: now };
             const created = await supabase('bioreq_requests', {
                 method: 'POST', prefer: 'return=representation',
-                body: JSON.stringify({ id, req_number: code, status: data.status, requester_id: user.id, request_data: requestData })
+                body: JSON.stringify({ id, req_number: code, status: data.status, requester_id: currentUser.id, request_data: requestData })
             });
             request = mapRequest(created[0]);
         }
@@ -130,9 +165,9 @@ module.exports = async (req, res) => {
                 old_status: oldStatus,
                 new_status: request.status,
                 action: action || (data.id ? 'guardar' : 'crear'),
-                user_id: user.id,
-                user_role: user.role,
-                user_name: user.name,
+                user_id: currentUser.id,
+                user_role: currentUser.role,
+                user_name: currentUser.name,
                 comment: data._comment || (data.id ? '' : 'Solicitud creada'),
                 request_code: request.reqNumber
             });

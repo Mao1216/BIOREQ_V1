@@ -2,7 +2,9 @@
 let draftCodePreview = 'TEM-Generando...';
 
 async function loadDatabase() {
-    const response = await fetch('/api/bioreq');
+    const response = await fetch('/api/bioreq', {
+        headers: { 'x-bioreq-session': currentSessionToken || '' }
+    });
     if (!response.ok) throw new Error('No se pudo cargar la información de Supabase.');
     const data = await response.json();
     db.requests = data.requests;
@@ -11,7 +13,9 @@ async function loadDatabase() {
 
 async function loadDraftCodePreview() {
     try {
-        const response = await fetch('/api/bioreq?preview=TEM');
+        const response = await fetch('/api/bioreq?preview=TEM', {
+            headers: { 'x-bioreq-session': currentSessionToken || '' }
+        });
         const data = await response.json();
         draftCodePreview = data.code || draftCodePreview;
         if (currentView === 'form' && !viewContextId) renderApp();
@@ -87,7 +91,7 @@ function getPriorityBadge(priorityId) {
 async function saveRequest(data, action) {
     const response = await fetch('/api/bioreq', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-bioreq-session': currentSessionToken || '' },
         body: JSON.stringify({ data, action, user: currentUser })
     });
     const result = await response.json();
@@ -628,9 +632,18 @@ async function changeStatus(reqId, newStatus, action, comment) {
 // --- 7. AUTH & HELPERS ---
 async function handleLogin(e) {
     e.preventDefault();
-    const user = db.users.find(x => x.username === document.getElementById('username').value && x.password === document.getElementById('password').value);
-    if (user) {
-        currentUser = user;
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    try {
+        const response = await fetch('/api/bioreq', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login', username, password })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'No se pudo iniciar sesión.');
+        currentUser = result.user;
+        currentSessionToken = result.sessionToken;
         document.getElementById('login-error').classList.add('hidden');
         try {
             await loadDatabase();
@@ -640,15 +653,15 @@ async function handleLogin(e) {
             document.getElementById('login-error').textContent = error.message;
             document.getElementById('login-error').classList.remove('hidden');
             currentUser = null;
+            currentSessionToken = null;
         }
+    } catch (error) {
+        document.getElementById('login-error').textContent = error.message === 'Credenciales inválidas.' ? error.message : 'Credenciales incorrectas';
+        document.getElementById('login-error').classList.remove('hidden');
     }
-    else { document.getElementById('login-error').textContent = 'Credenciales incorrectas'; document.getElementById('login-error').classList.remove('hidden'); }
 }
 function fillLogin(user) { document.getElementById('username').value = user; document.getElementById('password').value = '123'; }
-function logout() { currentUser = null; currentView = 'dashboard'; renderApp(); }
+function logout() { currentUser = null; currentSessionToken = null; currentView = 'dashboard'; renderApp(); }
 function getLastObservation(reqId) { const obs = db.history.filter(h => h.requestId === reqId && h.newStatus === STATUS.OBSERVADO).reverse(); return obs.length ? obs[0].comment : ''; }
 
-window.onload = async () => {
-    try { await loadDatabase(); } catch (error) { console.warn(error); }
-    renderApp();
-};
+window.onload = renderApp;
