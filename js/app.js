@@ -5,7 +5,9 @@ let autosaveInProgress = false;
 let autosaveDirty = false;
 
 async function loadDatabase() {
-    const response = await fetch('/api/bioreq');
+    const response = await fetch('/api/bioreq', {
+        headers: { 'x-bioreq-session': currentSessionToken || '' }
+    });
     if (!response.ok) throw new Error('No se pudo cargar la información de Supabase.');
     const data = await response.json();
     db.requests = data.requests;
@@ -14,7 +16,9 @@ async function loadDatabase() {
 
 async function loadDraftCodePreview() {
     try {
-        const response = await fetch('/api/bioreq?preview=TEM');
+        const response = await fetch('/api/bioreq?preview=TEM', {
+            headers: { 'x-bioreq-session': currentSessionToken || '' }
+        });
         const data = await response.json();
         draftCodePreview = data.code || draftCodePreview;
         if (currentView === 'form' && !viewContextId) renderApp();
@@ -90,7 +94,7 @@ function getPriorityBadge(priorityId) {
 async function saveRequest(data, action) {
     const response = await fetch('/api/bioreq', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-bioreq-session': currentSessionToken || '' },
         body: JSON.stringify({ data, action, user: currentUser })
     });
     const result = await response.json();
@@ -101,7 +105,6 @@ async function saveRequest(data, action) {
 
 function getRequestsByRole() {
     if (!currentUser) return [];
-    if (currentUser.role === ROLES.SUPER_ADMIN) return db.requests;
     if (currentUser.role === ROLES.ANDF_ADF) {
         return db.requests.filter(r => r.requesterId === currentUser.id);
     } else if (currentUser.role === ROLES.SGID_CDF) {
@@ -240,10 +243,21 @@ function renderLoginView() {
                     <h2 class="mt-6 text-3xl font-extrabold text-gray-900">BIOREQ</h2>
                     <p class="mt-2 text-sm text-gray-600">Gestión digital de requerimientos para desarrollo</p>
                 </div>
-                <div class="mt-8 space-y-4">
+                <form id="login-form" class="mt-8 space-y-6" onsubmit="handleLogin(event)">
+                    <div class="rounded-md shadow-sm -space-y-px">
+                        <div><input id="username" type="text" required class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-300 text-gray-900 rounded-t-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" placeholder="Usuario"></div>
+                        <div><input id="password" type="password" required class="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-300 text-gray-900 rounded-b-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" placeholder="Contraseña"></div>
+                    </div>
                     <div id="login-error" class="hidden text-sm text-red-600 text-center font-medium"></div>
-                    <button onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 shadow-sm"><i class="fab fa-google text-red-500"></i> Continuar con Google</button>
-                    <p class="text-xs text-center text-gray-500">Acceso exclusivo para correos autorizados de Biomont.</p>
+                    <div><button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primaryHover"><i class="fas fa-sign-in-alt mr-2 mt-0.5"></i> Iniciar sesión</button></div>
+                </form>
+                <div class="mt-6 border-t border-gray-200 pt-4">
+                    <p class="text-xs text-gray-500 mb-2 font-semibold text-center">Usuarios de prueba:</p>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <div class="bg-gray-50 p-2 rounded text-center cursor-pointer hover:bg-gray-100 border" onclick="fillLogin('andf01')"><b>andf01</b><br>ANDF</div>
+                        <div class="bg-gray-50 p-2 rounded text-center cursor-pointer hover:bg-gray-100 border" onclick="fillLogin('sgid01')"><b>sgid01</b><br>SGID</div>
+                        <div class="bg-gray-50 p-2 rounded text-center cursor-pointer hover:bg-gray-100 border" onclick="fillLogin('log01')"><b>log01</b><br>LOG</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -665,30 +679,38 @@ async function changeStatus(reqId, newStatus, action, comment) {
 }
 
 // --- 7. AUTH & HELPERS ---
-function loginWithGoogle() { window.location.assign('/api/auth?action=google'); }
-
-async function restoreSession() {
+async function handleLogin(e) {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
     try {
-        const response = await fetch('/api/auth?action=session');
+        const response = await fetch('/api/bioreq', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'login', username, password })
+        });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Sin sesión.');
+        if (!response.ok) throw new Error(result.error || 'No se pudo iniciar sesión.');
         currentUser = result.user;
-        await loadDatabase();
-        currentView = 'dashboard';
-        renderApp();
-    } catch (error) {
-        currentUser = null;
-        renderApp();
-        const reason = new URLSearchParams(window.location.search).get('auth_error');
-        if (reason) {
-            const errorBox = document.getElementById('login-error');
-            errorBox.textContent = reason === 'not_authorized' ? 'Tu correo no está autorizado para acceder a BIOREQ.' : 'No se pudo completar el inicio de sesión con Google.';
-            errorBox.classList.remove('hidden');
-            window.history.replaceState({}, document.title, window.location.pathname);
+        currentSessionToken = result.sessionToken;
+        document.getElementById('login-error').classList.add('hidden');
+        try {
+            await loadDatabase();
+            currentView = 'dashboard';
+            renderApp();
+        } catch (error) {
+            document.getElementById('login-error').textContent = error.message;
+            document.getElementById('login-error').classList.remove('hidden');
+            currentUser = null;
+            currentSessionToken = null;
         }
+    } catch (error) {
+        document.getElementById('login-error').textContent = error.message === 'Credenciales inválidas.' ? error.message : 'Credenciales incorrectas';
+        document.getElementById('login-error').classList.remove('hidden');
     }
 }
-async function logout() { await fetch('/api/auth?action=logout', { method: 'POST' }); currentUser = null; currentView = 'dashboard'; renderApp(); }
+function fillLogin(user) { document.getElementById('username').value = user; document.getElementById('password').value = '123'; }
+function logout() { currentUser = null; currentSessionToken = null; currentView = 'dashboard'; renderApp(); }
 function getLastObservation(reqId) { const obs = db.history.filter(h => h.requestId === reqId && h.newStatus === STATUS.OBSERVADO).reverse(); return obs.length ? obs[0].comment : ''; }
 
-window.onload = restoreSession;
+window.onload = renderApp;
