@@ -105,6 +105,10 @@ module.exports = async (req, res) => {
         if (!currentUser) return res.status(401).json({ error: 'Sesión no válida o vencida.' });
 
         if (req.method === 'GET') {
+            if (req.query.catalog === '1') {
+                const catalog = await supabase('bioreq_catalog_items?is_active=eq.true&select=code,name,item_type,category,pharmaceutical_form,unit_of_measure&order=name.asc');
+                return res.status(200).json({ items: catalog });
+            }
             if (req.query.preview) {
                 const prefix = req.query.preview;
                 const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Lima', year: '2-digit', month: '2-digit' }).formatToParts(new Date());
