@@ -1,4 +1,4 @@
-// --- 2. UTILITY FUNCTIONS ---
+// --- 2. UTILITY FUNCTIONS --- 
 let draftCodePreview = 'TEM-Generando...';
 let autosaveTimer = null;
 let autosaveInProgress = false;
