@@ -2,8 +2,7 @@
 const ROLES = {
     ANDF_ADF: 'ANDF_ADF',
     SGID_CDF: 'SGID_CDF',
-    LOG: 'LOG',
-    SUPER_ADMIN: 'SUPER_ADMIN'
+    LOG: 'LOG'
 };
 
 const STATUS = {
@@ -29,7 +28,7 @@ const LISTS = {
 
 // La información operativa y las cuentas se consultan y guardan exclusivamente
 // en Supabase mediante /api/bioreq. No se utiliza almacenamiento del navegador.
-let db = { requests: [], history: [] };
+let db = { requests: [], history: [], catalogItems: [] };
 
 // Current App State
 let currentUser = null;

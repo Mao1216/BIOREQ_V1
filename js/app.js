@@ -12,6 +12,8 @@ async function loadDatabase() {
     const data = await response.json();
     db.requests = data.requests;
     db.history = data.history;
+    const catalogResponse = await fetch('/api/bioreq?catalog=1', { headers: { 'x-bioreq-session': currentSessionToken || '' } });
+    if (catalogResponse.ok) db.catalogItems = (await catalogResponse.json()).items || [];
 }
 
 async function loadDraftCodePreview() {
@@ -36,8 +38,23 @@ function getCurrentDateTime() {
     const year = now.getFullYear();
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${day}/${month}/${year} – ${hours}:${minutes}`;
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds}`;
 }
+
+function formatDateTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    const local = new Date(date.toLocaleString('en-US', { timeZone: 'America/Lima' }));
+    return `${String(local.getDate()).padStart(2, '0')}/${String(local.getMonth() + 1).padStart(2, '0')}/${local.getFullYear()} - ${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}:${String(local.getSeconds()).padStart(2, '0')}`;
+}
+
+function areaForRole(role) {
+    return ({ ANDF_ADF: 'Desarrollo Farmacéutico', SGID_CDF: 'Investigación y Desarrollo', LOG: 'Logística', SUPER_ADMIN: 'SIG' })[role] || role || '';
+}
+
+function personWithArea(name, role) { return `${name || 'Usuario'} · ${areaForRole(role)}`; }
 
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
@@ -180,7 +197,7 @@ function renderApp() {
                     <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-sm"><i class="fas fa-user"></i></div>
                     <div class="overflow-hidden">
                         <p class="text-sm font-medium truncate" title="${currentUser.name}">${currentUser.name}</p>
-                        <p class="text-xs text-blue-300 truncate">${currentUser.role}</p>
+                        <p class="text-xs text-blue-300 truncate">${areaForRole(currentUser.role)}</p>
                     </div>
                 </div>
             </div>
@@ -214,7 +231,7 @@ function renderSidebarMenu() {
     const isActive = (v) => currentView === v ? 'bg-primary text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white';
     const baseClass = "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors w-full text-left cursor-pointer";
 
-    menu += `<a onclick="navigateTo('dashboard')" class="${baseClass} ${isActive('dashboard')} mb-2"><i class="fas fa-chart-line w-6 text-center mr-2"></i> Dashboard</a>`;
+    menu += `<a onclick="navigateTo('dashboard')" class="${baseClass} ${isActive('dashboard')} mb-2"><i class="fas fa-chart-line w-6 text-center mr-2"></i> Monitor</a>`;
     if (currentUser.role === ROLES.ANDF_ADF) {
         menu += `
             <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 mb-2">Acciones</div>
@@ -320,7 +337,7 @@ function renderDashboard() {
     if (currentFilters.type) tableData = tableData.filter(r => r.articleType === currentFilters.type);
 
     let filterHtml = '';
-    if (currentUser.role === ROLES.SGID_CDF || currentUser.role === ROLES.LOG) {
+    if (currentUser.role) {
         const sOpts = Object.values(STATUS).map(s => `<option value="${s}" ${currentFilters.status===s?'selected':''}>${s}</option>`).join('');
         const pOpts = LISTS.priorities.map(p => `<option value="${p.id}" ${currentFilters.priority===p.id?'selected':''}>Prioridad ${p.label}</option>`).join('');
         const tOpts = LISTS.articleTypes.map(t => `<option value="${t}" ${currentFilters.type===t?'selected':''}>${t}</option>`).join('');
@@ -343,7 +360,7 @@ function renderDashboard() {
     return `
         <div class="max-w-7xl mx-auto">
             <div class="flex justify-between items-end mb-6">
-                <div><h1 class="text-2xl font-bold">Dashboard</h1><p class="text-sm text-gray-500">Bienvenido, ${currentUser.name}</p></div>
+                <div><h1 class="text-2xl font-bold">Monitor</h1><p class="text-sm text-gray-500">Bienvenido, ${personWithArea(currentUser.name, currentUser.role)}</p></div>
                 ${currentUser.role === ROLES.ANDF_ADF ? `<button onclick="navigateTo('form')" class="bg-primary hover:bg-primaryHover text-white px-4 py-2 rounded-md shadow text-sm font-medium"><i class="fas fa-plus"></i> Nuevo</button>` : ''}
             </div>
             ${alertsHtml}
@@ -431,15 +448,16 @@ function renderForm() {
                 
                 <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Descripción del Requerimiento</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
-                    <div><label class="block text-sm font-medium">Cantidad de muestra *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
+                    <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" value="${val('supplierName')}" placeholder="Seleccione o ingrese el proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div><label class="block text-sm font-medium">Cantidad *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
                 </div></div>
 
                 <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Producto</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre *</label><input type="text" id="productName" required value="${val('productName')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre o código del producto *</label><input type="text" id="productName" list="product-suggestions" oninput="handleProductLookup()" required value="${val('productName')}" placeholder="Escriba código o nombre" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="product-suggestions">${db.catalogItems.map(item => `<option value="${item.code} - ${item.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para completar los datos automáticamente.</p></div>
                     <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
                     <div><label class="block text-sm font-medium">Forma farmacéutica</label><select id="pharmaceuticalForm" class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.pharmaForms, 'pharmaceuticalForm')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Responsable *</label><input type="text" id="responsible" required value="${val('responsible') || currentUser.name}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
@@ -491,38 +509,46 @@ function renderDetail(id) {
         `);
     }
 
-    const hist = db.history.filter(h => h.requestId === req.id).sort((a,b) => b.id.localeCompare(a.id));
-    const creator = db.history.find(h => h.requestId === req.id && h.action === 'crear');
-    const approvers = db.history.filter(h => h.requestId === req.id && h.action === 'aprobar');
-    const auditSummary = `<div class="mb-5 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm"><div class="rounded bg-blue-50 border border-blue-100 p-3"><span class="block text-xs uppercase text-blue-700 font-semibold">Creado por</span><span class="font-medium">${creator ? creator.userName : '-'}</span></div><div class="rounded bg-green-50 border border-green-100 p-3"><span class="block text-xs uppercase text-green-700 font-semibold">Aprobaciones</span><span class="font-medium">${approvers.length ? approvers.map(h => h.userName).join(' · ') : 'Pendiente'}</span></div></div>`;
+    const hist = db.history.filter(h => h.requestId === req.id).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     const historyHtml = hist.map(h => `
         <li class="relative pb-5">
             <div class="relative flex space-x-3">
                 <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
-                    <div><p class="text-sm text-gray-500"><span class="font-medium text-gray-900">${h.userName}</span> ${h.action === 'crear' ? 'creó el requerimiento' : h.action === 'aprobar' ? 'aprobó el requerimiento' : h.action === 'cancelar' ? 'canceló el requerimiento' : 'registró la acción'}: ${getStatusBadge(h.newStatus)}</p>
+                    <div><p class="text-sm text-gray-500"><span class="font-medium text-gray-900">${personWithArea(h.userName, h.userRole)}</span> ${h.action === 'crear' ? 'creó el requerimiento' : h.action === 'aprobar' ? 'aprobó el requerimiento' : h.action === 'cancelar' ? 'canceló el requerimiento' : 'registró la acción'}: ${getStatusBadge(h.newStatus)}</p>
                     ${h.comment ? `<p class="mt-1 text-sm bg-gray-50 p-2 rounded border">"${h.comment}"</p>` : ''}</div>
-                    <div class="text-right text-xs text-gray-500">${h.timestamp}</div>
+                    <div class="text-right text-xs text-gray-500">${formatDateTime(h.timestamp)}</div>
                 </div>
             </div>
         </li>`).join('');
 
     const Field = (lbl, val) => `<div><dt class="text-xs font-medium text-gray-500 uppercase">${lbl}</dt><dd class="mt-1 text-sm font-medium">${val || '-'}</dd></div>`;
     const tabClass = (tab) => detailTab === tab ? 'border-primary text-primary bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300';
-    const timelineHtml = [...hist].reverse().map((h, index) => `
+    const reviewSteps = [
+        { role: ROLES.ANDF_ADF, label: 'Crear solicitud', done: hist.some(h => h.action === 'crear') },
+        { role: ROLES.SGID_CDF, label: 'Aprobar solicitud', done: hist.some(h => h.action === 'aprobar' && h.newStatus === STATUS.APROBACION_PENDIENTE_LOG) },
+        { role: ROLES.LOG, label: 'Aprobar solicitud', done: hist.some(h => h.action === 'aprobar' && h.newStatus === STATUS.APROBADO) },
+        { role: null, label: 'Fin', done: req.status === STATUS.APROBADO }
+    ];
+    const timelineHtml = hist.map((h, index) => `
         <li class="relative pl-8 ${index < hist.length - 1 ? 'pb-8' : ''}">
             <span class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white"><i class="fas ${h.action === 'aprobar' ? 'fa-check' : h.action === 'cancelar' ? 'fa-ban' : 'fa-circle'} text-[8px]"></i></span>
             <p class="text-sm font-semibold text-gray-900">${h.action === 'crear' ? 'Requerimiento creado' : h.action === 'aprobar' ? 'Requerimiento aprobado' : h.action === 'cancelar' ? 'Requerimiento cancelado' : h.action === 'observar' ? 'Requerimiento observado' : 'Estado actualizado'}</p>
-            <p class="text-sm text-gray-600">${h.userName} · ${h.timestamp}</p>
+            <p class="text-sm text-gray-600">${personWithArea(h.userName, h.userRole)} · ${formatDateTime(h.timestamp)}</p>
             <p class="mt-1 text-xs font-medium text-primary">${h.requestCode || req.reqNumber} · ${h.newStatus}</p>
             ${h.comment ? `<p class="mt-2 text-sm text-gray-600">${h.comment}</p>` : ''}
+        </li>`).join('') + reviewSteps.filter(step => !step.done).map((step, index) => `
+        <li class="relative pl-8 ${index < reviewSteps.length - 1 ? 'pb-8' : ''}">
+          <span class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-gray-500"><i class="fas fa-clock text-[8px]"></i></span>
+          <p class="text-sm font-semibold text-gray-700">${step.label}</p>
+          <p class="text-sm text-gray-500">Pendiente: ${step.role ? areaForRole(step.role) : 'Cierre del flujo'}</p>
         </li>`).join('');
 
     return `
         <div class="max-w-5xl mx-auto pb-10">
             <div class="mb-6 flex justify-between items-start">
                 <div class="flex items-center gap-3"><button onclick="navigateTo('dashboard')" class="bg-white p-2 rounded-full border"><i class="fas fa-arrow-left"></i></button>
-                <div><h1 class="text-2xl font-bold flex items-center gap-3">${req.reqNumber} ${getStatusBadge(req.status)}</h1></div></div>
-            </div>
+                <div><h1 class="text-2xl font-bold flex items-center gap-3">${req.reqNumber || ''} ${getStatusBadge(req.status)}</h1><p class="mt-1 text-sm text-gray-500">${formatDateTime(req.createdAt || req.date)}</p></div></div>
+            </div>${h.action === 'observar' && req.observationAttachments?.length ? `<div class="mt-2 flex flex-wrap gap-2">${req.observationAttachments.map(file => `<a download="${file.name}" href="${file.dataUrl}" class="text-xs text-primary border rounded px-2 py-1"><i class="fas fa-paperclip mr-1"></i>${file.name}</a>`).join('')}</div>` : ''}
             
             <div class="mb-6 border-b border-gray-200 flex gap-1 overflow-x-auto">
                 <button onclick="setDetailTab('detail')" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap ${tabClass('detail')}"><i class="fas fa-file-alt mr-2"></i>Detalle del requerimiento</button>
@@ -530,27 +556,18 @@ function renderDetail(id) {
                 <button onclick="setDetailTab('flow')" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap ${tabClass('flow')}"><i class="fas fa-route mr-2"></i>Flujo de revisión</button>
             </div>
 
-            <div class="${detailTab === 'detail' ? '' : 'hidden'} bg-white shadow rounded-lg border">
-                <div class="px-4 py-5 bg-gray-50 border-b"><h3 class="text-lg font-medium">Detalle del Requerimiento</h3></div>
+            <div class="${detailTab === 'detail' ? '' : 'hidden'} bg-white shadow rounded-xl border overflow-hidden">
+                <div class="px-6 py-5 bg-gradient-to-r from-slate-50 to-blue-50 border-b"><h3 class="text-lg font-semibold">Detalle del requerimiento</h3><p class="text-sm text-gray-500">Información registrada en la solicitud</p></div>
                 <div class="p-6">
-                    <dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">
-                        ${Field('Tipo', req.articleType)} ${Field('Cantidad', req.sampleQuantity + ' ' + req.unit)} ${Field('Prioridad', req.priority)}
-                        ${Field('Gestión de proveedores', req.supplierStrategy === 'PROVEEDOR_EXISTENTE' ? 'Proveedor existente' : req.supplierStrategy === 'NUEVOS_PROVEEDORES' ? 'Buscar nuevos proveedores' : '-')}
-                        <div class="md:col-span-3">${Field('Descripción', req.description)}</div>
-                    </dl>
-                    <dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">
-                        ${Field('Producto', req.productName)} ${Field('Categoría', req.category)} ${Field('Forma', req.pharmaceuticalForm)} ${Field('Resp.', req.responsible)}
-                    </dl>
-                    <dl class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        ${Field('Partícula', req.particleSize)} ${Field('Working Std.', req.workingStandard)} ${Field('CAS', req.casNumber)}
-                        <div class="md:col-span-3">${Field('Uso', req.intendedUse)}</div>
-                    </dl>
+                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Descripción del requerimiento</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Gestión de proveedores', req.supplierStrategy === 'PROVEEDOR_EXISTENTE' ? 'Proveedor existente' : req.supplierStrategy === 'NUEVOS_PROVEEDORES' ? 'Buscar nuevos proveedores' : '-')} ${req.supplierName ? Field('Proveedor', req.supplierName) : ''} ${Field('Cantidad', `${req.sampleQuantity || '-'} ${req.unit || ''}`)} ${Field('Prioridad', req.priority)}</dl>
+                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información del producto</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Producto', req.productName)} ${Field('Categoría', req.category)} ${Field('Forma farmacéutica', req.pharmaceuticalForm)} ${Field('Responsable', req.responsible)}</dl>
+                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información complementaria</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6">${Field('Tipo de artículo', req.articleType)} ${Field('Tamaño de partícula', req.particleSize)} ${Field('Working estándar', req.workingStandard)} ${Field('N° CAS', req.casNumber)} ${Field('Cant. lotes industriales', req.industrialLotQuantity)} <div class="md:col-span-3">${Field('Descripción', req.description)}</div><div class="md:col-span-3">${Field('Uso destinado', req.intendedUse)}</div><div class="md:col-span-3">${Field('Observaciones', req.observations)}</div></dl>
                 </div>
             </div>
             ${detailTab === 'detail' ? actionsHtml : ''}
             <div class="${detailTab === 'history' ? '' : 'hidden'} mt-8 bg-white shadow rounded-lg border">
                 <div class="px-4 py-5 bg-gray-50 border-b"><h3 class="text-lg font-medium">Bitácora del requerimiento</h3></div>
-                <div class="p-6">${auditSummary}<ul class="ml-3 border-l-2 border-blue-200 pl-5">${historyHtml}</ul></div>
+                <div class="p-6"><ul class="ml-3 border-l-2 border-blue-200 pl-5">${historyHtml}</ul></div>
             </div>
             <div class="${detailTab === 'flow' ? '' : 'hidden'} bg-white shadow rounded-lg border p-6">
                 <h3 class="text-xl font-bold text-gray-900">Flujo de revisión</h3>
@@ -572,6 +589,7 @@ function getFormData(status) {
         unit: document.getElementById('unit').value,
         priority: document.getElementById('priority').value,
         supplierStrategy: document.getElementById('supplierStrategy').value,
+        supplierName: document.getElementById('supplierName')?.value || '',
         productName: document.getElementById('productName').value,
         category: document.getElementById('category').value,
         pharmaceuticalForm: document.getElementById('pharmaceuticalForm').value,
@@ -584,6 +602,35 @@ function getFormData(status) {
         observations: document.getElementById('observations').value,
         status
     };
+}
+
+function toggleSupplierField() {
+    const isExisting = document.getElementById('supplierStrategy').value === 'PROVEEDOR_EXISTENTE';
+    const wrapper = document.getElementById('supplier-name-wrap');
+    const field = document.getElementById('supplierName');
+    wrapper.classList.toggle('hidden', !isExisting);
+    field.required = isExisting;
+    if (!isExisting) field.value = '';
+}
+
+function handleProductLookup() {
+    const input = document.getElementById('productName');
+    const value = input.value.trim().toLowerCase();
+    const item = db.catalogItems.find(candidate => `${candidate.code} - ${candidate.name}`.toLowerCase() === value || candidate.code.toLowerCase() === value);
+    if (!item) return;
+    input.value = `${item.code} - ${item.name}`;
+    const fill = (id, value) => {
+        const field = document.getElementById(id);
+        if (!field || !value) return;
+        if (field.tagName === 'SELECT' && ![...field.options].some(option => option.value === value)) field.add(new Option(value, value));
+        field.value = value;
+    };
+    fill('unit', item.unit_of_measure);
+    fill('category', item.category);
+    fill('pharmaceuticalForm', item.pharmaceutical_form);
+    const type = document.getElementById('articleType');
+    if (type && item.item_type) type.value = item.item_type;
+    queueFormAutosave();
 }
 
 function setupFormAutosave() {
@@ -660,17 +707,30 @@ function handleAction(reqId, actionStr) {
         }, 'Cancelar requerimiento', true);
     }
     else if (actionStr === 'observar') {
-        openModal('Observar', '<textarea id="obs-comment" class="w-full border rounded p-2"></textarea>', () => {
+        openModal('Observar', '<label class="block text-sm font-medium mb-1">Observación *</label><textarea id="obs-comment" class="w-full border rounded p-2 mb-4"></textarea><label class="block text-sm font-medium mb-1">Imágenes o documentos de sustento</label><input id="obs-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" class="w-full text-sm"><p class="mt-1 text-xs text-gray-500">Máximo 2 MB por archivo.</p>', async () => {
             const c = document.getElementById('obs-comment').value;
-            if(c) changeStatus(reqId, STATUS.OBSERVADO, 'observar', c); else showToast('Comentario obligatorio', 'error');
+            if (!c) return showToast('Comentario obligatorio', 'error');
+            try { await changeStatus(reqId, STATUS.OBSERVADO, 'observar', c, await readObservationFiles()); }
+            catch (error) { showToast(error.message, 'error'); }
         }, 'Registrar', true);
     }
 }
 
-async function changeStatus(reqId, newStatus, action, comment) {
+async function readObservationFiles() {
+    const files = [...(document.getElementById('obs-files')?.files || [])];
+    return Promise.all(files.map(file => new Promise((resolve, reject) => {
+        if (file.size > 2 * 1024 * 1024) return reject(new Error(`${file.name} supera 2 MB.`));
+        const reader = new FileReader();
+        reader.onload = () => resolve({ name: file.name, type: file.type, dataUrl: reader.result });
+        reader.onerror = () => reject(new Error(`No se pudo leer ${file.name}.`));
+        reader.readAsDataURL(file);
+    })));
+}
+
+async function changeStatus(reqId, newStatus, action, comment, attachments = []) {
     const req = db.requests.find(r => r.id === reqId);
     try {
-        await saveRequest({ ...req, status: newStatus, _comment: comment }, action);
+        await saveRequest({ ...req, status: newStatus, _comment: comment, observationAttachments: attachments }, action);
         showToast(`Estado: ${newStatus}`);
         navigateTo('dashboard');
     } catch (error) {
