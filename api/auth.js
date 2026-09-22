@@ -39,12 +39,12 @@ module.exports = async (req, res) => {
     const action = req.query.action;
 
     try {
-        if (action === 'google') {
+        if (action === 'microsoft') {
             const verifier = crypto.randomBytes(48).toString('base64url');
             const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
             const callback = `${applicationUrl(req)}/api/auth?action=callback`;
             setCookie(res, 'bioreq_oauth_verifier', verifier, 600);
-            return redirect(res, `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(callback)}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256`);
+            return redirect(res, `${SUPABASE_URL}/auth/v1/authorize?provider=azure&scopes=email&redirect_to=${encodeURIComponent(callback)}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256`);
         }
 
         if (action === 'callback') {
@@ -54,17 +54,17 @@ module.exports = async (req, res) => {
                 method: 'POST', headers: headers(), body: JSON.stringify({ auth_code: req.query.code, code_verifier: verifier })
             });
             const tokenBody = await tokenResponse.text();
-            if (!tokenResponse.ok) throw new Error(tokenBody || 'No se pudo validar Google.');
+            if (!tokenResponse.ok) throw new Error(tokenBody || 'No se pudo validar Microsoft.');
             const tokens = JSON.parse(tokenBody);
             const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${tokens.access_token}` } });
-            const googleUser = await userResponse.json();
-            if (!userResponse.ok || !googleUser.email) throw new Error('No se pudo identificar el correo de Google.');
+            const microsoftUser = await userResponse.json();
+            if (!userResponse.ok || !microsoftUser.email) throw new Error('No se pudo identificar el correo de Microsoft.');
 
-            const profiles = await rest(`bioreq_user_profiles?email=eq.${encodeURIComponent(googleUser.email.toLowerCase())}&is_active=eq.true&select=*`);
+            const profiles = await rest(`bioreq_user_profiles?email=eq.${encodeURIComponent(microsoftUser.email.toLowerCase())}&is_active=eq.true&select=*`);
             const profile = profiles[0];
             if (!profile) return redirect(res, `${applicationUrl(req)}/?auth_error=not_authorized`);
-            if (profile.auth_user_id && profile.auth_user_id !== googleUser.id) return redirect(res, `${applicationUrl(req)}/?auth_error=identity_mismatch`);
-            if (!profile.auth_user_id) await rest(`bioreq_user_profiles?id=eq.${profile.id}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ auth_user_id: googleUser.id, updated_at: new Date().toISOString() }) });
+            if (profile.auth_user_id && profile.auth_user_id !== microsoftUser.id) return redirect(res, `${applicationUrl(req)}/?auth_error=identity_mismatch`);
+            if (!profile.auth_user_id) await rest(`bioreq_user_profiles?id=eq.${profile.id}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ auth_user_id: microsoftUser.id, updated_at: new Date().toISOString() }) });
 
             const sessionToken = crypto.randomBytes(32).toString('hex');
             const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();

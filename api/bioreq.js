@@ -65,14 +65,15 @@ async function addHistory(entry) {
 }
 
 async function getSession(req) {
-    const token = req.headers['x-bioreq-session'];
+    const token = (req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith('bioreq_session='))?.slice('bioreq_session='.length);
     if (!token) return null;
-    const sessions = await supabase(`bioreq_sessions?token=eq.${encodeURIComponent(token)}&select=user_id,expires_at`);
+    const sessions = await supabase(`bioreq_web_sessions?token=eq.${encodeURIComponent(token)}&select=profile_id,expires_at`);
     const session = sessions[0];
     if (!session || new Date(session.expires_at) <= new Date()) return null;
-    const users = await supabase(`bioreq_users?id=eq.${encodeURIComponent(session.user_id)}&select=id,username,role,full_name`);
-    const user = users[0];
-    return user ? { id: user.id, username: user.username, role: user.role, name: user.full_name } : null;
+    const profiles = await supabase(`bioreq_user_profiles?id=eq.${encodeURIComponent(session.profile_id)}&is_active=eq.true&select=id,email,role,full_name`);
+    const profile = profiles[0];
+    const roles = { ANDF: 'ANDF_ADF', SGID: 'SGID_CDF', LOG: 'LOG', SUPER_ADMIN: 'SUPER_ADMIN' };
+    return profile ? { id: profile.id, username: profile.email, role: roles[profile.role] || profile.role, name: profile.full_name } : null;
 }
 
 module.exports = async (req, res) => {
@@ -81,26 +82,6 @@ module.exports = async (req, res) => {
     }
 
     try {
-        if (req.method === 'POST' && req.body?.action === 'login') {
-            const { username, password } = req.body;
-            if (!username || !password) return res.status(400).json({ error: 'Ingresa usuario y contraseña.' });
-            const authenticated = await supabase('rpc/authenticate_bioreq_user', {
-                method: 'POST', body: JSON.stringify({ p_username: username, p_password: password })
-            });
-            const account = authenticated[0];
-            if (!account) return res.status(401).json({ error: 'Credenciales inválidas.' });
-            const sessionToken = randomBytes(32).toString('hex');
-            const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-            await supabase('bioreq_sessions', {
-                method: 'POST', prefer: 'return=minimal',
-                body: JSON.stringify({ token: sessionToken, user_id: account.id, expires_at: expiresAt })
-            });
-            return res.status(200).json({
-                sessionToken,
-                user: { id: account.id, username: account.username, role: account.role, name: account.name }
-            });
-        }
-
         const currentUser = await getSession(req);
         if (!currentUser) return res.status(401).json({ error: 'Sesión no válida o vencida.' });
 
