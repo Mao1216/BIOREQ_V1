@@ -2,7 +2,8 @@
 const ROLES = {
     ANDF_ADF: 'ANDF_ADF',
     SGID_CDF: 'SGID_CDF',
-    LOG: 'LOG'
+    LOG: 'LOG',
+    SUPER_ADMIN: 'SUPER_ADMIN'
 };
 
 const STATUS = {
