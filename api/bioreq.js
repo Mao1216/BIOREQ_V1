@@ -6,7 +6,7 @@ function headers(prefer = '') {
     return {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json', 
         ...(prefer ? { Prefer: prefer } : {})
     };
 }
