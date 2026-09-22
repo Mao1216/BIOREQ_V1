@@ -50,7 +50,13 @@ function areaForRole(role) {
     return ({ ANDF_ADF: 'Desarrollo Farmacéutico', SGID_CDF: 'Investigación y Desarrollo', LOG: 'Logística', SUPER_ADMIN: 'SIG' })[role] || role || '';
 }
 
-function personWithArea(name, role) { return `${name || 'Usuario'} · ${areaForRole(role)}`; }
+function personWithArea(name, role) {
+    // Las fichas antiguas pueden contener siglas entre paréntesis junto al nombre.
+    // Se muestran solo el nombre y el área para mantener una presentación uniforme.
+    const cleanName = String(name || 'Usuario').replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+    const area = areaForRole(role);
+    return area ? `${cleanName} · ${area}` : cleanName;
+}
 
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
@@ -369,7 +375,7 @@ function renderDashboard() {
                             ${tableData.length === 0 ? `<tr><td colspan="5" class="px-6 py-8 text-center text-gray-500 text-sm">No hay solicitudes.</td></tr>` : 
                             tableData.map(req => `
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap"><div class="font-medium">${req.reqNumber}</div><div class="text-xs text-gray-500">${req.date}</div></td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><div class="font-medium">${req.reqNumber}</div><div class="text-xs text-gray-500">${formatDateTime(req.createdAt || req.date)}</div></td>
                                     <td class="px-6 py-4"><div class="text-sm font-medium truncate max-w-xs">${req.productName||'(Sin nombre)'}</div><div class="text-xs text-gray-500">${req.articleType||'-'}</div></td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getPriorityBadge(req.priority)}</td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getStatusBadge(req.status)}</td>
@@ -432,21 +438,21 @@ function renderForm() {
                 <input type="hidden" id="req-id" value="${val('id')}">
                 <input type="hidden" id="req-status" value="${isEdit ? reqData.status : STATUS.BORRADOR}">
                 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Descripción del Requerimiento</h3></div>
-                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
-                    <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" value="${val('supplierName')}" placeholder="Seleccione o ingrese el proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
-                    <div><label class="block text-sm font-medium">Cantidad *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
-                    <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
-                </div></div>
-
                 <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Producto</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre o código del producto *</label><input type="text" id="productName" list="product-suggestions" oninput="handleProductLookup()" required value="${val('productName')}" placeholder="Escriba código o nombre" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="product-suggestions">${db.catalogItems.map(item => `<option value="${item.code} - ${item.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para completar los datos automáticamente.</p></div>
                     <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
                     <div><label class="block text-sm font-medium">Forma farmacéutica</label><select id="pharmaceuticalForm" class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.pharmaForms, 'pharmaceuticalForm')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Responsable *</label><input type="text" id="responsible" required value="${val('responsible') || currentUser.name}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                </div></div>
+
+                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Requerimiento</h3></div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
+                    <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" value="${val('supplierName')}" placeholder="Seleccione o ingrese el proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div><label class="block text-sm font-medium">Cantidad *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
                 </div></div>
 
                 <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información complementaria</h3></div>
@@ -505,6 +511,7 @@ function renderDetail(id) {
                     <div class="text-right text-xs text-gray-500">${formatDateTime(h.timestamp)}</div>
                 </div>
             </div>
+            ${h.action === 'observar' && req.observationAttachments?.length ? `<div class="mt-2 flex flex-wrap gap-2">${req.observationAttachments.map(file => `<a download="${file.name}" href="${file.dataUrl}" class="text-xs text-primary border rounded px-2 py-1"><i class="fas fa-paperclip mr-1"></i>${file.name}</a>`).join('')}</div>` : ''}
         </li>`).join('');
 
     const Field = (lbl, val) => `<div><dt class="text-xs font-medium text-gray-500 uppercase">${lbl}</dt><dd class="mt-1 text-sm font-medium">${val || '-'}</dd></div>`;
@@ -534,7 +541,7 @@ function renderDetail(id) {
             <div class="mb-6 flex justify-between items-start">
                 <div class="flex items-center gap-3"><button onclick="navigateTo('dashboard')" class="bg-white p-2 rounded-full border"><i class="fas fa-arrow-left"></i></button>
                 <div><h1 class="text-2xl font-bold flex items-center gap-3">${req.reqNumber || ''} ${getStatusBadge(req.status)}</h1><p class="mt-1 text-sm text-gray-500">${formatDateTime(req.createdAt || req.date)}</p></div></div>
-            </div>${h.action === 'observar' && req.observationAttachments?.length ? `<div class="mt-2 flex flex-wrap gap-2">${req.observationAttachments.map(file => `<a download="${file.name}" href="${file.dataUrl}" class="text-xs text-primary border rounded px-2 py-1"><i class="fas fa-paperclip mr-1"></i>${file.name}</a>`).join('')}</div>` : ''}
+            </div>
             
             <div class="mb-6 border-b border-gray-200 flex gap-1 overflow-x-auto">
                 <button onclick="setDetailTab('detail')" class="px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap ${tabClass('detail')}"><i class="fas fa-file-alt mr-2"></i>Detalle del requerimiento</button>
