@@ -469,9 +469,9 @@ function renderForm() {
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
                     <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" list="supplier-suggestions" oninput="handleSupplierLookup()" value="${val('supplierName')}" placeholder="Escriba código o nombre del proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="supplier-suggestions">${db.suppliers.map(supplier => `<option value="${supplier.code} - ${supplier.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para usar el proveedor registrado.</p></div>
                     <div><label class="block text-sm font-medium">Cantidad de muestra *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
-                    <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
+                    <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Descripción *</label><textarea id="description" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('description')}</textarea></div>
                 </div></div>
 
@@ -647,7 +647,7 @@ function findCatalogItem(value) {
 }
 
 function setProductFieldsLocked(locked) {
-    ['unit', 'category', 'pharmaceuticalForm', 'articleType'].forEach(id => {
+    ['category', 'pharmaceuticalForm'].forEach(id => {
         const field = document.getElementById(id);
         if (!field) return;
         field.disabled = locked;
@@ -671,10 +671,8 @@ function handleProductLookup() {
         if (field.tagName === 'SELECT' && ![...field.options].some(option => option.value === value)) field.add(new Option(value, value));
         field.value = value;
     };
-    fill('unit', item.unit_of_measure);
     fill('category', item.category);
     fill('pharmaceuticalForm', item.pharmaceutical_form);
-    fill('articleType', item.item_type || 'Producto terminado');
     setProductFieldsLocked(true);
     queueFormAutosave();
 }
