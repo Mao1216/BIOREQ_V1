@@ -12,6 +12,8 @@ async function loadDatabase() {
     db.history = data.history;
     const catalogResponse = await fetch('/api/bioreq?catalog=1');
     if (catalogResponse.ok) db.catalogItems = (await catalogResponse.json()).items || [];
+    const suppliersResponse = await fetch('/api/bioreq?suppliers=1');
+    if (suppliersResponse.ok) db.suppliers = (await suppliersResponse.json()).items || [];
 }
 
 async function loadDraftCodePreview() {
@@ -454,7 +456,7 @@ function renderForm() {
                 <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Requerimiento</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
-                    <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" value="${val('supplierName')}" placeholder="Seleccione o ingrese el proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" list="supplier-suggestions" oninput="handleSupplierLookup()" value="${val('supplierName')}" placeholder="Escriba código o nombre del proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="supplier-suggestions">${db.suppliers.map(supplier => `<option value="${supplier.code} - ${supplier.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para usar el proveedor registrado.</p></div>
                     <div><label class="block text-sm font-medium">Cantidad *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
@@ -641,6 +643,15 @@ function handleProductLookup() {
     fill('pharmaceuticalForm', item.pharmaceutical_form);
     const type = document.getElementById('articleType');
     if (type && item.item_type) type.value = item.item_type;
+    queueFormAutosave();
+}
+
+function handleSupplierLookup() {
+    const input = document.getElementById('supplierName');
+    const value = input.value.trim().toLowerCase();
+    const supplier = db.suppliers.find(candidate => `${candidate.code} - ${candidate.name}`.toLowerCase() === value || candidate.code.toLowerCase() === value);
+    if (!supplier) return;
+    input.value = `${supplier.code} - ${supplier.name}`;
     queueFormAutosave();
 }
 
