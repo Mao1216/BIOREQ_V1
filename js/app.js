@@ -193,10 +193,9 @@ function navigateTo(view, id = null) {
 }
 
 function canEditOwnDraft(request) {
-    if (!request || (!currentUser?.isSig && currentUser?.role !== ROLES.ANDF_ADF)) return false;
+    if (!request || currentUser?.role !== ROLES.ANDF_ADF) return false;
     if (![STATUS.BORRADOR, STATUS.OBSERVADO].includes(request.status)) return false;
-    // SIG puede abrir los borradores para administración y pruebas.
-    return request.requesterId === currentUser.id || currentUser.isSig;
+    return request.requesterId === currentUser.id;
 }
 
 function setDetailTab(tab) {
@@ -396,18 +395,16 @@ function renderDashboard() {
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto / Artículo</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prioridad</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acción</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
-                            ${tableData.length === 0 ? `<tr><td colspan="5" class="px-6 py-8 text-center text-gray-500 text-sm">No hay solicitudes.</td></tr>` : 
+                            ${tableData.length === 0 ? `<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500 text-sm">No hay solicitudes.</td></tr>` :
                             tableData.map(req => `
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap"><div class="font-medium">${req.reqNumber}</div><div class="text-xs text-gray-500">${formatDateTime(getMonitorTimestamp(req))}</div></td>
                                     <td class="px-6 py-4"><div class="text-sm font-medium truncate max-w-xs">${req.productName||'(Sin nombre)'}</div><div class="text-xs text-gray-500">${req.articleType||'-'}</div></td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getPriorityBadge(req.priority)}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap">${getStatusBadge(req.status)}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">${canEditOwnDraft(req) ? `<button onclick="navigateTo('form', '${req.id}')" class="text-primary hover:bg-blue-50 px-3 py-1 rounded">Editar borrador <i class="fas fa-pen ml-1"></i></button>` : `<button onclick="navigateTo('detail', '${req.id}')" class="text-primary hover:bg-blue-50 px-3 py-1 rounded">Revisar <i class="fas fa-chevron-right ml-1"></i></button>`}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${getStatusBadge(req.status)} ${canEditOwnDraft(req) ? `<button onclick="navigateTo('form', '${req.id}')" class="mt-2 block text-primary hover:bg-blue-50 px-2 py-1 -ml-2 rounded text-sm font-medium">Editar borrador <i class="fas fa-pen ml-1"></i></button>` : `<button onclick="navigateTo('detail', '${req.id}')" class="mt-2 block text-primary hover:bg-blue-50 px-2 py-1 -ml-2 rounded text-sm">Revisar <i class="fas fa-chevron-right ml-1"></i></button>`}</td>
                                 </tr>`).join('')}
                         </tbody>
                     </table>
@@ -447,7 +444,7 @@ function clearFilters() {
 }
 
 function renderForm() {
-    if (currentUser.role !== ROLES.ANDF_ADF && !currentUser.isSig) return renderDashboard();
+    if (currentUser.role !== ROLES.ANDF_ADF) return renderDashboard();
     let reqData = {}, isEdit = false;
     
     if (viewContextId) {
