@@ -455,7 +455,8 @@ function renderForm() {
 
     const val = (key) => reqData[key] || '';
     const isObserved = reqData.status === STATUS.OBSERVADO;
-    const selectedProduct = findCatalogItem(val('productName'));
+    const isNewProduct = Boolean(reqData.productNew);
+    const selectedProduct = isNewProduct ? null : findCatalogItem(val('productName'));
     const autoLocked = selectedProduct ? 'disabled' : '';
 
     const opts = (arr, key) => arr.map(x => typeof x === 'string' ? `<option value="${x}" ${val(key)===x?'selected':''}>${x}</option>` : `<option value="${x.id}" ${val(key)===x.id?'selected':''}>${x.label} (${x.desc})</option>`).join('');
@@ -472,7 +473,7 @@ function renderForm() {
                 
                 <div class="order-2 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Producto</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre o código del producto *</label><input type="text" id="productName" list="product-suggestions" oninput="handleProductLookup()" required value="${val('productName')}" placeholder="Escriba código o nombre" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="product-suggestions">${db.catalogItems.map(item => `<option value="${item.code} - ${item.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para completar los datos automáticamente.</p></div>
+                    <div class="md:col-span-2"><div class="flex items-center justify-between gap-3"><label class="block text-sm font-medium">${isNewProduct ? 'Nombre del producto nuevo' : 'Nombre o código del producto'} *</label><label class="inline-flex items-center gap-2 text-sm font-medium text-primary cursor-pointer"><input type="checkbox" id="productNew" onchange="toggleProductMode()" ${isNewProduct ? 'checked' : ''} class="h-4 w-4"> Producto nuevo</label></div><input type="text" id="productName" ${isNewProduct ? '' : 'list="product-suggestions" oninput="handleProductLookup()"'} required value="${val('productName')}" placeholder="${isNewProduct ? 'Ingrese el nombre del producto nuevo' : 'Escriba código o nombre'}" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="product-suggestions">${db.catalogItems.map(item => `<option value="${item.code} - ${item.name}"></option>`).join('')}</datalist><p id="product-help" class="mt-1 text-xs text-gray-500">${isNewProduct ? 'Registre manualmente la información del producto nuevo.' : 'Seleccione una coincidencia para completar los datos automáticamente.'}</p></div>
                     <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
                     <div><label class="block text-sm font-medium">Forma farmacéutica</label><select id="pharmaceuticalForm" ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.pharmaForms, 'pharmaceuticalForm')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Responsable *</label><input type="text" id="responsible" required value="${val('responsible') || currentUser.name}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
@@ -480,8 +481,6 @@ function renderForm() {
 
                 <div class="order-1 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Requerimiento</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
-                    <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" list="supplier-suggestions" oninput="handleSupplierLookup()" value="${val('supplierName')}" placeholder="Escriba código o nombre del proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="supplier-suggestions">${db.suppliers.map(supplier => `<option value="${supplier.code} - ${supplier.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para usar el proveedor registrado.</p></div>
                     <div><label class="block text-sm font-medium">Cantidad de muestra *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
@@ -495,7 +494,7 @@ function renderForm() {
                     <div><label class="block text-sm font-medium">Tamaño de partícula</label><input type="text" id="particleSize" value="${val('particleSize')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Working estándar *</label><select id="workingStandard" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="SI" ${val('workingStandard')==='SI'?'selected':''}>SI</option><option value="NO" ${val('workingStandard')==='NO'?'selected':''}>NO</option></select></div>
                     <div><label class="block text-sm font-medium">N° CAS</label><input type="text" id="casNumber" value="${val('casNumber')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
-                    <div><label class="block text-sm font-medium">Cant. lotes industriales</label><input type="number" id="industrialLotQuantity" step="0.01" value="${val('industrialLotQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div><label class="block text-sm font-medium">Cantidad requerida para Lotes Industriales</label><input type="number" id="industrialLotQuantity" step="0.01" value="${val('industrialLotQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
                 <div class="order-4 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Observaciones</h3></div>
@@ -549,7 +548,8 @@ function renderDetail(id) {
 
     const Field = (lbl, val) => `<div><dt class="text-xs font-medium text-gray-500 uppercase">${lbl}</dt><dd class="mt-1 text-sm font-medium">${val || '-'}</dd></div>`;
     const tabClass = (tab) => detailTab === tab ? 'border-primary text-primary bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300';
-    const needsLogApproval = req.supplierStrategy === 'NUEVOS_PROVEEDORES';
+    // La gestión de proveedores será una etapa futura de Logística.
+    const needsLogApproval = false;
     const sgidApproved = hist.some(h => h.userRole === ROLES.SGID_CDF && h.action === 'aprobar');
     const logApproved = hist.some(h => h.userRole === ROLES.LOG && h.action === 'aprobar' && h.newStatus === STATUS.APROBADO);
     const reviewSteps = [
@@ -593,9 +593,9 @@ function renderDetail(id) {
             <div class="${detailTab === 'detail' ? '' : 'hidden'} bg-white shadow rounded-xl border overflow-hidden">
                 <div class="px-6 py-5 bg-gradient-to-r from-slate-50 to-blue-50 border-b"><h3 class="text-lg font-semibold">Detalle del requerimiento</h3><p class="text-sm text-gray-500">Información registrada en la solicitud</p></div>
                 <div class="p-6">
-                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información del requerimiento</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Gestión de proveedores', req.supplierStrategy === 'PROVEEDOR_EXISTENTE' ? 'Proveedor existente' : req.supplierStrategy === 'NUEVOS_PROVEEDORES' ? 'Buscar nuevos proveedores' : '-')} ${req.supplierName ? Field('Proveedor', req.supplierName) : ''} ${Field('Cantidad de muestra', `${req.sampleQuantity || '-'} ${req.unit || ''}`)} ${Field('Prioridad', req.priority)} ${Field('Tipo de artículo', req.articleType)} <div class="md:col-span-3">${Field('Descripción', req.description)}</div></dl>
+                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información del requerimiento</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Cantidad de muestra', `${req.sampleQuantity || '-'} ${req.unit || ''}`)} ${Field('Prioridad', req.priority)} ${Field('Tipo de artículo', req.articleType)} <div class="md:col-span-3">${Field('Descripción', req.description)}</div></dl>
                     <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información del producto</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Producto', req.productName)} ${Field('Categoría', req.category)} ${Field('Forma farmacéutica', req.pharmaceuticalForm)} ${Field('Responsable', req.responsible)}</dl>
-                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información complementaria</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6">${Field('Tamaño de partícula', req.particleSize)} ${Field('Working estándar', req.workingStandard)} ${Field('N° CAS', req.casNumber)} ${Field('Cant. lotes industriales', req.industrialLotQuantity)} <div class="md:col-span-3">${Field('Uso destinado', req.intendedUse)}</div><div class="md:col-span-3">${Field('Observaciones', req.observations)}</div></dl>
+                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información complementaria</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6">${Field('Tamaño de partícula', req.particleSize)} ${Field('Working estándar', req.workingStandard)} ${Field('N° CAS', req.casNumber)} ${Field('Cantidad requerida para Lotes Industriales', req.industrialLotQuantity)} <div class="md:col-span-3">${Field('Uso destinado', req.intendedUse)}</div><div class="md:col-span-3">${Field('Observaciones', req.observations)}</div></dl>
                 </div>
             </div>
             ${detailTab === 'detail' ? actionsHtml : ''}
@@ -623,8 +623,7 @@ function getFormData(status) {
         sampleQuantity: document.getElementById('sampleQuantity').value,
         unit: document.getElementById('unit').value,
         priority: document.getElementById('priority').value,
-        supplierStrategy: document.getElementById('supplierStrategy').value,
-        supplierName: document.getElementById('supplierName')?.value || '',
+        productNew: document.getElementById('productNew').checked,
         productName: document.getElementById('productName').value,
         category: document.getElementById('category').value,
         pharmaceuticalForm: document.getElementById('pharmaceuticalForm').value,
@@ -644,13 +643,31 @@ function renderSigRoleChooser() {
     return `<div class="min-h-screen flex items-center justify-center w-full bg-gray-50 p-4"><div class="max-w-lg w-full space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-100"><div class="text-center"><img src="assets/biomont-logo.png" alt="Biomont" class="mx-auto h-16 w-48 object-contain"/><h1 class="mt-5 text-2xl font-bold text-gray-900">Selecciona un perfil</h1><p class="mt-2 text-sm text-gray-600">SIG puede operar BIOREQ con uno de los perfiles habilitados.</p></div><div class="space-y-3">${roleButton('ANDF_ADF', 'fa-flask', 'Desarrollo Farmacéutico', 'Crear y subsanar requerimientos.', 'bg-blue-600')}${roleButton('SGID_CDF', 'fa-microscope', 'Investigación y Desarrollo', 'Revisar, aprobar, observar o cancelar.', 'bg-purple-600')}${roleButton('LOG', 'fa-truck', 'Logística', 'Revisar y aprobar solicitudes derivadas.', 'bg-emerald-600')}</div>${currentUser?.activeRole ? `<button onclick="cancelSigRoleChooser()" class="w-full text-sm text-gray-500 hover:text-gray-800">Volver al perfil actual</button>` : `<button onclick="logout()" class="w-full text-sm text-gray-500 hover:text-gray-800">Cerrar sesión</button>`}</div></div>`;
 }
 
-function toggleSupplierField() {
-    const isExisting = document.getElementById('supplierStrategy').value === 'PROVEEDOR_EXISTENTE';
-    const wrapper = document.getElementById('supplier-name-wrap');
-    const field = document.getElementById('supplierName');
-    wrapper.classList.toggle('hidden', !isExisting);
-    field.required = isExisting;
-    if (!isExisting) field.value = '';
+function toggleProductMode() {
+    const isNewProduct = document.getElementById('productNew').checked;
+    const input = document.getElementById('productName');
+    const help = document.getElementById('product-help');
+    const label = input.closest('.md\\:col-span-2').querySelector('label');
+
+    if (isNewProduct) {
+        input.removeAttribute('list');
+        input.oninput = null;
+        input.placeholder = 'Ingrese el nombre del producto nuevo';
+        if (help) help.textContent = 'Registre manualmente la información del producto nuevo.';
+        if (label) label.textContent = 'Nombre del producto nuevo *';
+        // Un producto nuevo no tiene datos que heredar del catálogo.
+        document.getElementById('category').value = '';
+        document.getElementById('pharmaceuticalForm').value = '';
+        setProductFieldsLocked(false);
+    } else {
+        input.setAttribute('list', 'product-suggestions');
+        input.oninput = handleProductLookup;
+        input.placeholder = 'Escriba código o nombre';
+        if (help) help.textContent = 'Seleccione una coincidencia para completar los datos automáticamente.';
+        if (label) label.textContent = 'Nombre o código del producto *';
+        handleProductLookup();
+    }
+    queueFormAutosave();
 }
 
 function findCatalogItem(value) {
@@ -670,6 +687,7 @@ function setProductFieldsLocked(locked) {
 }
 
 function handleProductLookup() {
+    if (document.getElementById('productNew')?.checked) return;
     const input = document.getElementById('productName');
     const item = findCatalogItem(input.value);
     if (!item) {
@@ -686,15 +704,6 @@ function handleProductLookup() {
     fill('category', item.category);
     fill('pharmaceuticalForm', item.pharmaceutical_form);
     setProductFieldsLocked(true);
-    queueFormAutosave();
-}
-
-function handleSupplierLookup() {
-    const input = document.getElementById('supplierName');
-    const value = input.value.trim().toLowerCase();
-    const supplier = db.suppliers.find(candidate => `${candidate.code} - ${candidate.name}`.toLowerCase() === value || candidate.code.toLowerCase() === value);
-    if (!supplier) return;
-    input.value = `${supplier.code} - ${supplier.name}`;
     queueFormAutosave();
 }
 
@@ -779,18 +788,15 @@ async function handleAction(reqId, actionStr) {
     }
 
     if (actionStr === 'aprobar_sgid') {
-        const requiresLog = req.supplierStrategy === 'NUEVOS_PROVEEDORES';
-        const confirmation = requiresLog
-            ? '¿Confirmas la aprobación SGID? El requerimiento se enviará a Logística para buscar proveedores.'
-            : '¿Confirmas la aprobación SGID? El requerimiento cambiará a estado APROBADO.';
+        const confirmation = '¿Confirmas la aprobación SGID? El requerimiento cambiará a estado APROBADO.';
         if (!window.confirm(confirmation)) return;
 
         try {
             await changeStatus(
                 reqId,
-                requiresLog ? STATUS.APROBACION_PENDIENTE_LOG : STATUS.APROBADO,
+                STATUS.APROBADO,
                 'aprobar',
-                requiresLog ? 'Aprobado SGID. Enviado a LOG.' : 'Aprobado SGID. Flujo cerrado.'
+                'Aprobado SGID. Flujo cerrado.'
             );
         } catch (error) {
             showToast(error.message || 'No se pudo aprobar el requerimiento.', 'error');
