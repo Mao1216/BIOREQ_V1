@@ -489,6 +489,7 @@ function renderForm() {
 
                 <div class="fixed bottom-0 left-0 md:left-64 right-0 bg-white border-t p-4 flex justify-end gap-4 shadow-lg z-20">
                     <span id="autosave-state" class="mr-auto self-center text-xs text-gray-500">Los cambios se guardan automáticamente</span>
+                    ${isEdit && reqData.status === STATUS.BORRADOR ? `<button type="button" onclick="cancelDraft('${reqData.id}')" class="bg-red-50 border border-red-200 text-red-700 px-6 py-2 rounded-md shadow-sm font-medium">Cancelar borrador</button>` : ''}
                     <button type="button" onclick="submitForm('draft')" class="bg-white border text-gray-700 px-6 py-2 rounded-md shadow-sm font-medium">Guardar Borrador</button>
                     <button type="button" onclick="submitForm('send')" class="bg-primary text-white px-6 py-2 rounded-md shadow-sm font-medium">${isObserved ? 'Enviar Subsanación' : 'Enviar a Aprobación'}</button>
                 </div>
@@ -732,6 +733,15 @@ function submitForm(intent) {
         if (intent === 'send') openModal('Enviar a aprobación', '<p>¿Está seguro de enviar este requerimiento?</p>', executeFormSave);
         else executeFormSave();
     } else form.reportValidity();
+}
+
+function cancelDraft(reqId) {
+    const request = db.requests.find(item => item.id === reqId);
+    if (!request || request.status !== STATUS.BORRADOR) {
+        showToast('Solo se puede cancelar un requerimiento en etapa de borrador.', 'error');
+        return;
+    }
+    openModal('Cancelar borrador', '<p>El borrador quedará cancelado y no podrá continuar con su registro.</p>', () => changeStatus(reqId, STATUS.CANCELADO, 'cancelar', 'Borrador cancelado por el solicitante.'), 'Cancelar borrador', true);
 }
 
 function handleFormSubmit(e) { e.preventDefault(); submitForm(formSubmitIntent || 'draft'); }
