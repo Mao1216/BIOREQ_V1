@@ -193,9 +193,9 @@ function navigateTo(view, id = null) {
 }
 
 function canEditOwnDraft(request) {
-    if (!request || currentUser?.role !== ROLES.ANDF_ADF) return false;
+    if (!request || (!currentUser?.isSig && currentUser?.role !== ROLES.ANDF_ADF)) return false;
     if (![STATUS.BORRADOR, STATUS.OBSERVADO].includes(request.status)) return false;
-    // SIG puede abrir los borradores mientras realiza pruebas con el perfil ANDF.
+    // SIG puede abrir los borradores para administración y pruebas.
     return request.requesterId === currentUser.id || currentUser.isSig;
 }
 
@@ -447,7 +447,7 @@ function clearFilters() {
 }
 
 function renderForm() {
-    if (currentUser.role !== ROLES.ANDF_ADF) return renderDashboard();
+    if (currentUser.role !== ROLES.ANDF_ADF && !currentUser.isSig) return renderDashboard();
     let reqData = {}, isEdit = false;
     
     if (viewContextId) {
