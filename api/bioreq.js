@@ -152,17 +152,38 @@ module.exports = async (req, res) => {
         }
 
         if (!data.id || oldStatus !== request.status) {
-            await addHistory({
+            const historyBase = {
                 request_id: request.id,
-                old_status: oldStatus,
-                new_status: request.status,
-                action: action || (data.id ? 'guardar' : 'crear'),
                 user_id: currentUser.id,
                 user_role: currentUser.role,
                 user_name: currentUser.name,
-                comment: data._comment || (data.id ? '' : 'Solicitud creada'),
                 request_code: request.reqNumber
-            });
+            };
+            // Si se envía una solicitud nueva sin pasar por borrador, conservamos los dos hitos.
+            if (!data.id && action === 'enviar_revision') {
+                await addHistory({
+                    ...historyBase,
+                    old_status: null,
+                    new_status: 'BORRADOR',
+                    action: 'crear',
+                    comment: 'Creación del requerimiento'
+                });
+                await addHistory({
+                    ...historyBase,
+                    old_status: 'BORRADOR',
+                    new_status: request.status,
+                    action: 'enviar_revision',
+                    comment: data._comment || 'Enviado a revisión'
+                });
+            } else {
+                await addHistory({
+                    ...historyBase,
+                    old_status: oldStatus,
+                    new_status: request.status,
+                    action: data.id ? (action || 'guardar') : 'crear',
+                    comment: data._comment || (data.id ? '' : 'Solicitud creada')
+                });
+            }
         }
 
         return res.status(200).json({ request });
