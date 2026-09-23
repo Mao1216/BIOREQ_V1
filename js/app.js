@@ -102,7 +102,8 @@ function getStatusBadge(status) {
         [STATUS.CANCELADO]: 'bg-gray-800 text-white ring-gray-900/10'
     };
     const classes = config[status] || 'bg-gray-100 text-gray-700';
-    return `<span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${classes}">${status}</span>`;
+    const label = status === STATUS.APROBACION_PENDIENTE_LOG ? 'EN REVISIÓN - LOGÍSTICA' : status;
+    return `<span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${classes}">${label}</span>`;
 }
 
 function getPriorityBadge(priorityId) {
@@ -404,7 +405,7 @@ function renderDashboard() {
                                     <td class="px-6 py-4 whitespace-nowrap"><div class="font-medium">${req.reqNumber}</div><div class="text-xs text-gray-500">${formatDateTime(getMonitorTimestamp(req))}</div></td>
                                     <td class="px-6 py-4"><div class="text-sm font-medium truncate max-w-xs">${req.productName||'(Sin nombre)'}</div><div class="text-xs text-gray-500">${req.articleType||'-'}</div></td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getPriorityBadge(req.priority)}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap">${getStatusBadge(req.status)} ${canEditOwnDraft(req) ? `<button onclick="navigateTo('form', '${req.id}')" class="mt-2 block text-primary hover:bg-blue-50 px-2 py-1 -ml-2 rounded text-sm font-medium">Editar borrador <i class="fas fa-pen ml-1"></i></button>` : `<button onclick="navigateTo('detail', '${req.id}')" class="mt-2 block text-primary hover:bg-blue-50 px-2 py-1 -ml-2 rounded text-sm">Revisar <i class="fas fa-chevron-right ml-1"></i></button>`}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><div class="flex items-center gap-3">${getStatusBadge(req.status)} ${canEditOwnDraft(req) ? `<button onclick="navigateTo('form', '${req.id}')" class="text-primary hover:bg-blue-50 px-2 py-1 rounded text-sm font-medium">Editar borrador <i class="fas fa-pen ml-1"></i></button>` : `<button onclick="navigateTo('detail', '${req.id}')" class="text-primary hover:bg-blue-50 px-2 py-1 rounded text-sm">Revisar <i class="fas fa-chevron-right ml-1"></i></button>`}</div></td>
                                 </tr>`).join('')}
                         </tbody>
                     </table>
