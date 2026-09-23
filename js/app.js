@@ -441,6 +441,8 @@ function renderForm() {
 
     const val = (key) => reqData[key] || '';
     const isObserved = reqData.status === STATUS.OBSERVADO;
+    const selectedProduct = findCatalogItem(val('productName'));
+    const autoLocked = selectedProduct ? 'disabled' : '';
 
     const opts = (arr, key) => arr.map(x => typeof x === 'string' ? `<option value="${x}" ${val(key)===x?'selected':''}>${x}</option>` : `<option value="${x.id}" ${val(key)===x.id?'selected':''}>${x.label} (${x.desc})</option>`).join('');
 
@@ -457,8 +459,8 @@ function renderForm() {
                 <div class="order-2 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Producto</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre o código del producto *</label><input type="text" id="productName" list="product-suggestions" oninput="handleProductLookup()" required value="${val('productName')}" placeholder="Escriba código o nombre" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="product-suggestions">${db.catalogItems.map(item => `<option value="${item.code} - ${item.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para completar los datos automáticamente.</p></div>
-                    <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
-                    <div><label class="block text-sm font-medium">Forma farmacéutica</label><select id="pharmaceuticalForm" class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.pharmaForms, 'pharmaceuticalForm')}</select></div>
+                    <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
+                    <div><label class="block text-sm font-medium">Forma farmacéutica</label><select id="pharmaceuticalForm" ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.pharmaForms, 'pharmaceuticalForm')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Responsable *</label><input type="text" id="responsible" required value="${val('responsible') || currentUser.name}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
@@ -467,9 +469,9 @@ function renderForm() {
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
                     <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" list="supplier-suggestions" oninput="handleSupplierLookup()" value="${val('supplierName')}" placeholder="Escriba código o nombre del proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="supplier-suggestions">${db.suppliers.map(supplier => `<option value="${supplier.code} - ${supplier.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para usar el proveedor registrado.</p></div>
                     <div><label class="block text-sm font-medium">Cantidad de muestra *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
-                    <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
+                    <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
-                    <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
+                    <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required ${autoLocked} class="mt-1 block w-full border-gray-300 rounded border p-2 ${selectedProduct ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Descripción *</label><textarea id="description" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('description')}</textarea></div>
                 </div></div>
 
@@ -638,11 +640,29 @@ function toggleSupplierField() {
     if (!isExisting) field.value = '';
 }
 
+function findCatalogItem(value) {
+    const normalized = (value || '').trim().toLowerCase();
+    return db.catalogItems.find(candidate => `${candidate.code} - ${candidate.name}`.toLowerCase() === normalized || candidate.code.toLowerCase() === normalized);
+}
+
+function setProductFieldsLocked(locked) {
+    ['unit', 'category', 'pharmaceuticalForm', 'articleType'].forEach(id => {
+        const field = document.getElementById(id);
+        if (!field) return;
+        field.disabled = locked;
+        field.classList.toggle('bg-gray-100', locked);
+        field.classList.toggle('text-gray-600', locked);
+        field.classList.toggle('cursor-not-allowed', locked);
+    });
+}
+
 function handleProductLookup() {
     const input = document.getElementById('productName');
-    const value = input.value.trim().toLowerCase();
-    const item = db.catalogItems.find(candidate => `${candidate.code} - ${candidate.name}`.toLowerCase() === value || candidate.code.toLowerCase() === value);
-    if (!item) return;
+    const item = findCatalogItem(input.value);
+    if (!item) {
+        setProductFieldsLocked(false);
+        return;
+    }
     input.value = `${item.code} - ${item.name}`;
     const fill = (id, value) => {
         const field = document.getElementById(id);
@@ -653,8 +673,8 @@ function handleProductLookup() {
     fill('unit', item.unit_of_measure);
     fill('category', item.category);
     fill('pharmaceuticalForm', item.pharmaceutical_form);
-    const type = document.getElementById('articleType');
-    if (type && item.item_type) type.value = item.item_type;
+    fill('articleType', item.item_type || 'Producto terminado');
+    setProductFieldsLocked(true);
     queueFormAutosave();
 }
 
