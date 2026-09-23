@@ -34,6 +34,7 @@ let db = { requests: [], history: [], catalogItems: [] };
 // Current App State
 let currentUser = null;
 let currentSessionToken = null;
+let sigRoleChooserOpen = false;
 let currentView = 'dashboard';
 let viewContextId = null;
 let currentFilters = { num: '', prod: '', status: '', priority: '', type: '' };

@@ -187,6 +187,10 @@ function renderApp() {
         app.innerHTML = renderLoginView();
         return;
     }
+    if (currentUser.isSig && (!currentUser.activeRole || sigRoleChooserOpen)) {
+        app.innerHTML = renderSigRoleChooser();
+        return;
+    }
 
     let layoutHTML = `
         <div class="w-64 bg-sidebar text-white flex flex-col transition-all duration-300 flex-shrink-0 hidden md:flex">
@@ -206,6 +210,7 @@ function renderApp() {
             </div>
             <nav class="flex-1 px-4 py-4 space-y-1 overflow-y-auto">${renderSidebarMenu()}</nav>
             <div class="p-4 border-t border-gray-700">
+                ${currentUser.isSig ? `<button onclick="openSigRoleChooser()" class="mb-2 flex items-center gap-3 w-full px-3 py-2 text-sm font-medium text-blue-300 hover:text-white hover:bg-gray-700 rounded-md"><i class="fas fa-user-shield w-5"></i> Cambiar perfil</button>` : ''}
                 <button onclick="logout()" class="flex items-center gap-3 w-full px-3 py-2 text-sm font-medium text-red-400 hover:text-white hover:bg-red-500 hover:bg-opacity-20 rounded-md"><i class="fas fa-sign-out-alt w-5"></i> Cerrar Sesión</button>
             </div>
         </div>
@@ -522,6 +527,13 @@ function renderDetail(id) {
         { role: ROLES.LOG, label: 'Aprobar solicitud', done: hist.some(h => h.action === 'aprobar' && h.newStatus === STATUS.APROBADO) },
         { role: null, label: 'Fin', done: req.status === STATUS.APROBADO }
     ];
+    const workflowSteps = [
+        { label: 'Enviado', done: req.status !== STATUS.BORRADOR },
+        { label: 'Revisión SGID', done: hist.some(h => h.userRole === ROLES.SGID_CDF && ['aprobar', 'observar', 'cancelar'].includes(h.action)) },
+        { label: 'Aprobación LOG', done: hist.some(h => h.userRole === ROLES.LOG && ['aprobar', 'observar'].includes(h.action)) },
+        { label: 'Cerrado', done: [STATUS.APROBADO, STATUS.CANCELADO].includes(req.status) }
+    ];
+    const workflowProgressHtml = `<div class="mt-7 overflow-x-auto pb-2"><div class="min-w-[620px] flex items-start">${workflowSteps.map((step, index) => `<div class="contents"><div class="w-28 shrink-0 text-center"><span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full ${step.done ? 'bg-primary text-white' : 'border-2 border-gray-300 bg-white text-transparent'}">${step.done ? '<i class="fas fa-check text-sm"></i>' : ''}</span><p class="mt-3 text-sm font-medium ${step.done ? 'text-gray-900' : 'text-gray-500'}">${step.label}</p></div>${index < workflowSteps.length - 1 ? `<div class="mt-4 h-0.5 flex-1 ${step.done && workflowSteps[index + 1].done ? 'bg-primary' : 'bg-gray-300'}"></div>` : ''}</div>`).join('')}</div></div>`;
     const timelineHtml = hist.map((h, index) => `
         <li class="relative pl-8 ${index < hist.length - 1 ? 'pb-8' : ''}">
             <span class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white"><i class="fas ${h.action === 'aprobar' ? 'fa-check' : h.action === 'cancelar' ? 'fa-ban' : 'fa-circle'} text-[8px]"></i></span>
@@ -564,7 +576,8 @@ function renderDetail(id) {
             </div>
             <div class="${detailTab === 'flow' ? '' : 'hidden'} bg-white shadow rounded-lg border p-6">
                 <h3 class="text-xl font-bold text-gray-900">Flujo de revisión</h3>
-                <p class="mt-1 text-sm text-gray-500">Línea de tiempo completa del requerimiento.</p>
+                <p class="mt-1 text-sm text-gray-500">Revisa el flujo de revisión del requerimiento.</p>
+                ${workflowProgressHtml}
                 <ol class="mt-8 ml-2 border-l-2 border-blue-200">${timelineHtml}</ol>
             </div>
         </div>
@@ -595,6 +608,11 @@ function getFormData(status) {
         observations: document.getElementById('observations').value,
         status
     };
+}
+
+function renderSigRoleChooser() {
+    const roleButton = (role, icon, title, detail, color) => `<button onclick="selectSigRole('${role}')" class="w-full text-left rounded-lg border p-4 hover:shadow-md transition bg-white hover:border-blue-400"><div class="flex items-center gap-4"><span class="w-10 h-10 rounded-full ${color} text-white flex items-center justify-center"><i class="fas ${icon}"></i></span><div><p class="font-semibold text-gray-900">${title}</p><p class="text-sm text-gray-500">${detail}</p></div></div></button>`;
+    return `<div class="min-h-screen flex items-center justify-center w-full bg-gray-50 p-4"><div class="max-w-lg w-full space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-100"><div class="text-center"><img src="assets/biomont-logo.png" alt="Biomont" class="mx-auto h-16 w-48 object-contain"/><h1 class="mt-5 text-2xl font-bold text-gray-900">Selecciona un perfil</h1><p class="mt-2 text-sm text-gray-600">SIG puede operar BIOREQ con uno de los perfiles habilitados.</p></div><div class="space-y-3">${roleButton('ANDF_ADF', 'fa-flask', 'Desarrollo Farmacéutico', 'Crear y subsanar requerimientos.', 'bg-blue-600')}${roleButton('SGID_CDF', 'fa-microscope', 'Investigación y Desarrollo', 'Revisar, aprobar, observar o cancelar.', 'bg-purple-600')}${roleButton('LOG', 'fa-truck', 'Logística', 'Revisar y aprobar solicitudes derivadas.', 'bg-emerald-600')}</div>${currentUser?.activeRole ? `<button onclick="cancelSigRoleChooser()" class="w-full text-sm text-gray-500 hover:text-gray-800">Volver al perfil actual</button>` : `<button onclick="logout()" class="w-full text-sm text-gray-500 hover:text-gray-800">Cerrar sesión</button>`}</div></div>`;
 }
 
 function toggleSupplierField() {
@@ -733,6 +751,25 @@ async function changeStatus(reqId, newStatus, action, comment, attachments = [])
 
 // --- 7. AUTH & HELPERS ---
 function loginWithMicrosoft() { window.location.assign('/api/auth?action=microsoft'); }
+
+function openSigRoleChooser() { sigRoleChooserOpen = true; renderApp(); }
+function cancelSigRoleChooser() { sigRoleChooserOpen = false; renderApp(); }
+async function selectSigRole(role) {
+    try {
+        const response = await fetch('/api/auth?action=select-role', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'No se pudo seleccionar el perfil.');
+        currentUser = result.user;
+        sigRoleChooserOpen = false;
+        await loadDatabase();
+        currentView = 'dashboard';
+        renderApp();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
 
 async function restoreSession() {
     try {
