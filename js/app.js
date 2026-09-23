@@ -525,7 +525,7 @@ function renderDetail(id) {
         actionsHtml = actBox(`
             <button onclick="handleAction('${req.id}', 'cancelar')" class="bg-gray-100 px-4 py-2 rounded border">Cancelar</button>
             <button onclick="handleAction('${req.id}', 'observar')" class="bg-red-600 text-white px-4 py-2 rounded">Observar</button>
-            <button onclick="handleAction('${req.id}', 'aprobar_sgid')" class="bg-green-600 text-white px-4 py-2 rounded">Aprobar</button>
+            <button type="button" onclick="handleAction('${req.id}', 'aprobar_sgid')" class="bg-green-600 text-white px-4 py-2 rounded">Aprobar</button>
         `);
     } else if (currentUser.role === ROLES.LOG && req.status === STATUS.APROBACION_PENDIENTE_LOG) {
         actionsHtml = actBox(`
@@ -771,10 +771,30 @@ async function executeFormSave() {
     }
 }
 
-function handleAction(reqId, actionStr) {
+async function handleAction(reqId, actionStr) {
+    const req = db.requests.find(request => request.id === reqId);
+    if (!req) {
+        showToast('No se encontró el requerimiento.', 'error');
+        return;
+    }
+
     if (actionStr === 'aprobar_sgid') {
         const requiresLog = req.supplierStrategy === 'NUEVOS_PROVEEDORES';
-        openModal('Aprobar', `<p>${requiresLog ? 'Se derivará a LOG para continuar con la búsqueda de proveedores.' : 'El proveedor ya existe; esta aprobación cerrará el flujo.'}</p>`, () => changeStatus(reqId, requiresLog ? STATUS.APROBACION_PENDIENTE_LOG : STATUS.APROBADO, 'aprobar', requiresLog ? 'Aprobado SGID. Enviado a LOG.' : 'Aprobado SGID. Flujo cerrado.'));
+        const confirmation = requiresLog
+            ? '¿Confirmas la aprobación SGID? El requerimiento se enviará a Logística para buscar proveedores.'
+            : '¿Confirmas la aprobación SGID? El requerimiento cambiará a estado APROBADO.';
+        if (!window.confirm(confirmation)) return;
+
+        try {
+            await changeStatus(
+                reqId,
+                requiresLog ? STATUS.APROBACION_PENDIENTE_LOG : STATUS.APROBADO,
+                'aprobar',
+                requiresLog ? 'Aprobado SGID. Enviado a LOG.' : 'Aprobado SGID. Flujo cerrado.'
+            );
+        } catch (error) {
+            showToast(error.message || 'No se pudo aprobar el requerimiento.', 'error');
+        }
     }
     else if (actionStr === 'aprobar_log') openModal('Aprobar (LOG)', '<p>Aprobación final.</p>', () => changeStatus(reqId, STATUS.APROBADO, 'aprobar', 'Aprobado LOG'));
     else if (actionStr === 'cancelar') {
