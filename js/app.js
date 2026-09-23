@@ -382,7 +382,7 @@ function renderDashboard() {
                             ${tableData.length === 0 ? `<tr><td colspan="5" class="px-6 py-8 text-center text-gray-500 text-sm">No hay solicitudes.</td></tr>` : 
                             tableData.map(req => `
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap"><div class="font-medium">${req.reqNumber}</div><div class="text-xs text-gray-500">${formatDateTime(req.createdAt || req.date)}</div></td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><div class="font-medium">${req.reqNumber}</div><div class="text-xs text-gray-500">${formatDateTime(getMonitorTimestamp(req))}</div></td>
                                     <td class="px-6 py-4"><div class="text-sm font-medium truncate max-w-xs">${req.productName||'(Sin nombre)'}</div><div class="text-xs text-gray-500">${req.articleType||'-'}</div></td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getPriorityBadge(req.priority)}</td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getStatusBadge(req.status)}</td>
@@ -394,6 +394,15 @@ function renderDashboard() {
             </div>
         </div>
     `;
+}
+
+function getMonitorTimestamp(req) {
+    // Los borradores muestran su última edición; los enviados, el momento de envío a revisión.
+    if (req.status === STATUS.BORRADOR) return req.updatedAt || req.createdAt || req.date;
+    const sentEvent = db.history
+        .filter(h => h.requestId === req.id && h.newStatus === STATUS.EN_REVISION)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    return sentEvent?.timestamp || req.updatedAt || req.createdAt || req.date;
 }
 
 function renderStatCard(title, value, icon, colorClass) {
@@ -441,11 +450,11 @@ function renderForm() {
             ${isObserved ? `<div class="bg-red-50 border-l-4 border-red-500 p-4 mb-6"><h3 class="font-medium text-red-800">Observada</h3><p class="italic text-sm mt-1">"${getLastObservation(reqData.id)}"</p></div>` : ''}
             <div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4 flex items-center justify-between"><div><p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Código actual</p><p class="mt-1 text-xl font-bold text-blue-900">${val('reqNumber') || getNextRequestCode()}</p></div><span class="text-xs text-blue-700">Se generará como borrador</span></div>
             
-            <form id="req-form" onsubmit="handleFormSubmit(event)" class="space-y-6">
+            <form id="req-form" onsubmit="handleFormSubmit(event)" class="space-y-6 flex flex-col">
                 <input type="hidden" id="req-id" value="${val('id')}">
                 <input type="hidden" id="req-status" value="${isEdit ? reqData.status : STATUS.BORRADOR}">
                 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Producto</h3></div>
+                <div class="order-2 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Producto</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Nombre o código del producto *</label><input type="text" id="productName" list="product-suggestions" oninput="handleProductLookup()" required value="${val('productName')}" placeholder="Escriba código o nombre" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="product-suggestions">${db.catalogItems.map(item => `<option value="${item.code} - ${item.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para completar los datos automáticamente.</p></div>
                     <div><label class="block text-sm font-medium">Categoría *</label><select id="category" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.categories, 'category')}</select></div>
@@ -453,19 +462,19 @@ function renderForm() {
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Responsable *</label><input type="text" id="responsible" required value="${val('responsible') || currentUser.name}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Requerimiento</h3></div>
+                <div class="order-1 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información del Requerimiento</h3></div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Gestión de proveedores *</label><select id="supplierStrategy" onchange="toggleSupplierField()" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="PROVEEDOR_EXISTENTE" ${val('supplierStrategy')==='PROVEEDOR_EXISTENTE'?'selected':''}>Trabajar con Proveedor existente</option><option value="NUEVOS_PROVEEDORES" ${val('supplierStrategy')==='NUEVOS_PROVEEDORES'?'selected':''}>Buscar nuevos proveedores</option></select></div>
                     <div id="supplier-name-wrap" class="md:col-span-2 ${val('supplierStrategy') === 'PROVEEDOR_EXISTENTE' ? '' : 'hidden'}"><label class="block text-sm font-medium">Proveedor actual *</label><input type="text" id="supplierName" list="supplier-suggestions" oninput="handleSupplierLookup()" value="${val('supplierName')}" placeholder="Escriba código o nombre del proveedor" class="mt-1 block w-full border-gray-300 rounded border p-2"><datalist id="supplier-suggestions">${db.suppliers.map(supplier => `<option value="${supplier.code} - ${supplier.name}"></option>`).join('')}</datalist><p class="mt-1 text-xs text-gray-500">Seleccione una coincidencia para usar el proveedor registrado.</p></div>
-                    <div><label class="block text-sm font-medium">Cantidad *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
+                    <div><label class="block text-sm font-medium">Cantidad de muestra *</label><input type="number" id="sampleQuantity" min="0.01" step="0.01" required value="${val('sampleQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Unidad de medida *</label><select id="unit" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.units, 'unit')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Prioridad *</label><select id="priority" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.priorities, 'priority')}</select></div>
-                </div></div>
-
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información complementaria</h3></div>
-                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Tipo de artículo *</label><select id="articleType" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option>${opts(LISTS.articleTypes, 'articleType')}</select></div>
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Descripción *</label><textarea id="description" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('description')}</textarea></div>
+                </div></div>
+
+                <div class="order-3 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Información complementaria</h3></div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2"><label class="block text-sm font-medium">Uso destinado *</label><textarea id="intendedUse" required class="mt-1 block w-full border-gray-300 rounded border p-2">${val('intendedUse')}</textarea></div>
                     <div><label class="block text-sm font-medium">Tamaño de partícula</label><input type="text" id="particleSize" value="${val('particleSize')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                     <div><label class="block text-sm font-medium">Working estándar *</label><select id="workingStandard" required class="mt-1 block w-full border-gray-300 rounded border p-2"><option value="">Seleccione...</option><option value="SI" ${val('workingStandard')==='SI'?'selected':''}>SI</option><option value="NO" ${val('workingStandard')==='NO'?'selected':''}>NO</option></select></div>
@@ -473,7 +482,7 @@ function renderForm() {
                     <div><label class="block text-sm font-medium">Cant. lotes industriales</label><input type="number" id="industrialLotQuantity" step="0.01" value="${val('industrialLotQuantity')}" class="mt-1 block w-full border-gray-300 rounded border p-2"></div>
                 </div></div>
 
-                <div class="bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Observaciones</h3></div>
+                <div class="order-4 bg-white rounded-lg shadow-sm border"><div class="bg-gray-50 px-6 py-4 border-b"><h3 class="font-semibold">Observaciones</h3></div>
                 <div class="p-6"><textarea id="observations" class="mt-1 block w-full border-gray-300 rounded border p-2">${val('observations')}</textarea></div></div>
 
                 <div class="fixed bottom-0 left-0 md:left-64 right-0 bg-white border-t p-4 flex justify-end gap-4 shadow-lg z-20">
@@ -523,23 +532,26 @@ function renderDetail(id) {
 
     const Field = (lbl, val) => `<div><dt class="text-xs font-medium text-gray-500 uppercase">${lbl}</dt><dd class="mt-1 text-sm font-medium">${val || '-'}</dd></div>`;
     const tabClass = (tab) => detailTab === tab ? 'border-primary text-primary bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300';
+    const needsLogApproval = req.supplierStrategy === 'NUEVOS_PROVEEDORES';
+    const sgidApproved = hist.some(h => h.userRole === ROLES.SGID_CDF && h.action === 'aprobar');
+    const logApproved = hist.some(h => h.userRole === ROLES.LOG && h.action === 'aprobar' && h.newStatus === STATUS.APROBADO);
     const reviewSteps = [
         { role: ROLES.ANDF_ADF, label: 'Crear solicitud', done: hist.some(h => h.action === 'crear') },
-        { role: ROLES.SGID_CDF, label: 'Aprobar solicitud', done: hist.some(h => h.action === 'aprobar' && h.newStatus === STATUS.APROBACION_PENDIENTE_LOG) },
-        { role: ROLES.LOG, label: 'Aprobar solicitud', done: hist.some(h => h.action === 'aprobar' && h.newStatus === STATUS.APROBADO) },
+        { role: ROLES.SGID_CDF, label: 'Aprobar solicitud', done: sgidApproved },
+        ...(needsLogApproval ? [{ role: ROLES.LOG, label: 'Aprobar solicitud', done: logApproved }] : []),
         { role: null, label: 'Fin', done: req.status === STATUS.APROBADO }
     ];
     const workflowSteps = [
-        { label: 'Enviado', done: req.status !== STATUS.BORRADOR },
-        { label: 'Revisión SGID', done: hist.some(h => h.userRole === ROLES.SGID_CDF && ['aprobar', 'observar', 'cancelar'].includes(h.action)) },
-        { label: 'Aprobación LOG', done: hist.some(h => h.userRole === ROLES.LOG && ['aprobar', 'observar'].includes(h.action)) },
+        { label: 'Enviado', done: hist.some(h => h.newStatus === STATUS.EN_REVISION) },
+        { label: 'Aprobación SGID', done: sgidApproved },
+        ...(needsLogApproval ? [{ label: 'Aprobación LOG', done: logApproved }] : []),
         { label: 'Cerrado', done: [STATUS.APROBADO, STATUS.CANCELADO].includes(req.status) }
     ];
     const workflowProgressHtml = `<div class="mt-7 overflow-x-auto pb-2"><div class="min-w-[620px] flex items-start">${workflowSteps.map((step, index) => `<div class="contents"><div class="w-28 shrink-0 text-center"><span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full ${step.done ? 'bg-primary text-white' : 'border-2 border-gray-300 bg-white text-transparent'}">${step.done ? '<i class="fas fa-check text-sm"></i>' : ''}</span><p class="mt-3 text-sm font-medium ${step.done ? 'text-gray-900' : 'text-gray-500'}">${step.label}</p></div>${index < workflowSteps.length - 1 ? `<div class="mt-4 h-0.5 flex-1 ${step.done && workflowSteps[index + 1].done ? 'bg-primary' : 'bg-gray-300'}"></div>` : ''}</div>`).join('')}</div></div>`;
     const timelineHtml = hist.map((h, index) => `
         <li class="relative pl-8 ${index < hist.length - 1 ? 'pb-8' : ''}">
             <span class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white"><i class="fas ${h.action === 'aprobar' ? 'fa-check' : h.action === 'cancelar' ? 'fa-ban' : 'fa-circle'} text-[8px]"></i></span>
-            <p class="text-sm font-semibold text-gray-900">${h.action === 'crear' ? 'Requerimiento creado' : h.action === 'aprobar' ? 'Requerimiento aprobado' : h.action === 'cancelar' ? 'Requerimiento cancelado' : h.action === 'observar' ? 'Requerimiento observado' : 'Estado actualizado'}</p>
+            <p class="text-sm font-semibold text-gray-900">${h.action === 'crear' ? 'Creación del requerimiento' : h.action === 'enviar_revision' ? 'Enviado a revisión' : h.action === 'aprobar' ? 'Requerimiento aprobado' : h.action === 'cancelar' ? 'Requerimiento cancelado' : h.action === 'observar' ? 'Requerimiento observado' : 'Estado actualizado'}</p>
             <p class="text-sm text-gray-600">${personWithArea(h.userName, h.userRole)} · ${formatDateTime(h.timestamp)}</p>
             <p class="mt-1 text-xs font-medium text-primary">${h.requestCode || req.reqNumber} · ${h.newStatus}</p>
             ${h.comment ? `<p class="mt-2 text-sm text-gray-600">${h.comment}</p>` : ''}
@@ -566,9 +578,9 @@ function renderDetail(id) {
             <div class="${detailTab === 'detail' ? '' : 'hidden'} bg-white shadow rounded-xl border overflow-hidden">
                 <div class="px-6 py-5 bg-gradient-to-r from-slate-50 to-blue-50 border-b"><h3 class="text-lg font-semibold">Detalle del requerimiento</h3><p class="text-sm text-gray-500">Información registrada en la solicitud</p></div>
                 <div class="p-6">
-                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Descripción del requerimiento</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Gestión de proveedores', req.supplierStrategy === 'PROVEEDOR_EXISTENTE' ? 'Proveedor existente' : req.supplierStrategy === 'NUEVOS_PROVEEDORES' ? 'Buscar nuevos proveedores' : '-')} ${req.supplierName ? Field('Proveedor', req.supplierName) : ''} ${Field('Cantidad', `${req.sampleQuantity || '-'} ${req.unit || ''}`)} ${Field('Prioridad', req.priority)}</dl>
+                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información del requerimiento</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Gestión de proveedores', req.supplierStrategy === 'PROVEEDOR_EXISTENTE' ? 'Proveedor existente' : req.supplierStrategy === 'NUEVOS_PROVEEDORES' ? 'Buscar nuevos proveedores' : '-')} ${req.supplierName ? Field('Proveedor', req.supplierName) : ''} ${Field('Cantidad de muestra', `${req.sampleQuantity || '-'} ${req.unit || ''}`)} ${Field('Prioridad', req.priority)} ${Field('Tipo de artículo', req.articleType)} <div class="md:col-span-3">${Field('Descripción', req.description)}</div></dl>
                     <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información del producto</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-b pb-6">${Field('Producto', req.productName)} ${Field('Categoría', req.category)} ${Field('Forma farmacéutica', req.pharmaceuticalForm)} ${Field('Responsable', req.responsible)}</dl>
-                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información complementaria</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6">${Field('Tipo de artículo', req.articleType)} ${Field('Tamaño de partícula', req.particleSize)} ${Field('Working estándar', req.workingStandard)} ${Field('N° CAS', req.casNumber)} ${Field('Cant. lotes industriales', req.industrialLotQuantity)} <div class="md:col-span-3">${Field('Descripción', req.description)}</div><div class="md:col-span-3">${Field('Uso destinado', req.intendedUse)}</div><div class="md:col-span-3">${Field('Observaciones', req.observations)}</div></dl>
+                    <h4 class="text-sm font-semibold text-primary uppercase tracking-wide mb-4">Información complementaria</h4><dl class="grid grid-cols-1 md:grid-cols-3 gap-6">${Field('Tamaño de partícula', req.particleSize)} ${Field('Working estándar', req.workingStandard)} ${Field('N° CAS', req.casNumber)} ${Field('Cant. lotes industriales', req.industrialLotQuantity)} <div class="md:col-span-3">${Field('Uso destinado', req.intendedUse)}</div><div class="md:col-span-3">${Field('Observaciones', req.observations)}</div></dl>
                 </div>
             </div>
             ${detailTab === 'detail' ? actionsHtml : ''}
@@ -711,7 +723,8 @@ async function executeFormSave() {
     data._comment = formSubmitIntent === 'send' ? 'Enviado a revisión SGID/CDF' : 'Guardado como borrador';
 
     try {
-        const saved = await saveRequest(data, data.id ? 'guardar' : 'crear');
+        const action = formSubmitIntent === 'send' ? 'enviar_revision' : (data.id ? 'guardar' : 'crear');
+        const saved = await saveRequest(data, action);
         if (saved) { showToast('Acción exitosa'); navigateTo('dashboard'); }
     } catch (error) {
         showToast(error.message, 'error');
@@ -719,7 +732,10 @@ async function executeFormSave() {
 }
 
 function handleAction(reqId, actionStr) {
-    if (actionStr === 'aprobar_sgid') openModal('Aprobar', '<p>Se derivará a LOG.</p>', () => changeStatus(reqId, STATUS.APROBACION_PENDIENTE_LOG, 'aprobar', 'Aprobado SGID'));
+    if (actionStr === 'aprobar_sgid') {
+        const requiresLog = req.supplierStrategy === 'NUEVOS_PROVEEDORES';
+        openModal('Aprobar', `<p>${requiresLog ? 'Se derivará a LOG para continuar con la búsqueda de proveedores.' : 'El proveedor ya existe; esta aprobación cerrará el flujo.'}</p>`, () => changeStatus(reqId, requiresLog ? STATUS.APROBACION_PENDIENTE_LOG : STATUS.APROBADO, 'aprobar', requiresLog ? 'Aprobado SGID. Enviado a LOG.' : 'Aprobado SGID. Flujo cerrado.'));
+    }
     else if (actionStr === 'aprobar_log') openModal('Aprobar (LOG)', '<p>Aprobación final.</p>', () => changeStatus(reqId, STATUS.APROBADO, 'aprobar', 'Aprobado LOG'));
     else if (actionStr === 'cancelar') {
         openModal('Cancelar requerimiento', '<p class="mb-3">El requerimiento se marcará como cancelado y quedará registrado en la bitácora.</p><textarea id="cancel-comment" placeholder="Motivo de cancelación (obligatorio)" class="w-full border rounded p-2"></textarea>', () => {
