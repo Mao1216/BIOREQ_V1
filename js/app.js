@@ -192,6 +192,13 @@ function navigateTo(view, id = null) {
     if (view === 'form' && !id) loadDraftCodePreview();
 }
 
+function canEditOwnDraft(request) {
+    if (!request || currentUser?.role !== ROLES.ANDF_ADF) return false;
+    if (![STATUS.BORRADOR, STATUS.OBSERVADO].includes(request.status)) return false;
+    // SIG puede abrir los borradores mientras realiza pruebas con el perfil ANDF.
+    return request.requesterId === currentUser.id || currentUser.isSig;
+}
+
 function setDetailTab(tab) {
     detailTab = tab;
     renderApp();
@@ -400,7 +407,7 @@ function renderDashboard() {
                                     <td class="px-6 py-4"><div class="text-sm font-medium truncate max-w-xs">${req.productName||'(Sin nombre)'}</div><div class="text-xs text-gray-500">${req.articleType||'-'}</div></td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getPriorityBadge(req.priority)}</td>
                                     <td class="px-6 py-4 whitespace-nowrap">${getStatusBadge(req.status)}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm"><button onclick="navigateTo('detail', '${req.id}')" class="text-primary hover:bg-blue-50 px-3 py-1 rounded">Revisar <i class="fas fa-chevron-right ml-1"></i></button></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm">${canEditOwnDraft(req) ? `<button onclick="navigateTo('form', '${req.id}')" class="text-primary hover:bg-blue-50 px-3 py-1 rounded">Editar borrador <i class="fas fa-pen ml-1"></i></button>` : `<button onclick="navigateTo('detail', '${req.id}')" class="text-primary hover:bg-blue-50 px-3 py-1 rounded">Revisar <i class="fas fa-chevron-right ml-1"></i></button>`}</td>
                                 </tr>`).join('')}
                         </tbody>
                     </table>
@@ -445,7 +452,7 @@ function renderForm() {
     
     if (viewContextId) {
         const existing = db.requests.find(r => r.id === viewContextId);
-        if (existing && existing.requesterId === currentUser.id && (existing.status === STATUS.BORRADOR || existing.status === STATUS.OBSERVADO)) {
+        if (canEditOwnDraft(existing)) {
             reqData = existing; isEdit = true;
         } else {
             showToast('No tienes permiso para editar esta solicitud.', 'error');
@@ -518,7 +525,7 @@ function renderDetail(id) {
     let actionsHtml = '';
     const actBox = (btns) => `<div class="mt-8 pt-6 border-t flex justify-end gap-3">${btns}</div>`;
 
-    if (currentUser.role === ROLES.ANDF_ADF && (req.status === STATUS.BORRADOR || req.status === STATUS.OBSERVADO)) {
+    if (canEditOwnDraft(req)) {
         actionsHtml = actBox(`<button onclick="navigateTo('form', '${req.id}')" class="bg-blue-600 text-white px-4 py-2 rounded">Editar / Subsanar</button>`);
     } else if (currentUser.role === ROLES.SGID_CDF && req.status === STATUS.EN_REVISION) {
         actionsHtml = actBox(`
