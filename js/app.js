@@ -162,7 +162,21 @@ function openModal(title, content, onConfirm, confirmText = 'Confirmar', isDange
     `;
     container.classList.remove('hidden');
     document.getElementById('modal-cancel').onclick = () => container.classList.add('hidden');
-    document.getElementById('modal-confirm').onclick = () => { onConfirm(); container.classList.add('hidden'); };
+    document.getElementById('modal-confirm').onclick = async () => {
+        const confirmButton = document.getElementById('modal-confirm');
+        confirmButton.disabled = true;
+        confirmButton.classList.add('opacity-60', 'cursor-wait');
+        try {
+            // Las acciones de aprobación se guardan en Supabase. Esperamos la
+            // respuesta antes de cerrar el cuadro para no ocultar un error.
+            await onConfirm();
+            container.classList.add('hidden');
+        } catch (error) {
+            showToast(error.message || 'No se pudo completar la acción.', 'error');
+            confirmButton.disabled = false;
+            confirmButton.classList.remove('opacity-60', 'cursor-wait');
+        }
+    };
 }
 
 function closeAllModals() {
@@ -556,8 +570,6 @@ function renderDetail(id) {
             <span class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white"><i class="fas ${h.action === 'aprobar' ? 'fa-check' : h.action === 'cancelar' ? 'fa-ban' : 'fa-circle'} text-[8px]"></i></span>
             <p class="text-sm font-semibold text-gray-900">${h.action === 'crear' ? 'Creación del requerimiento' : h.action === 'enviar_revision' ? 'Enviado a revisión' : h.action === 'aprobar' ? 'Requerimiento aprobado' : h.action === 'cancelar' ? 'Requerimiento cancelado' : h.action === 'observar' ? 'Requerimiento observado' : 'Estado actualizado'}</p>
             <p class="text-sm text-gray-600">${personWithArea(h.userName, h.userRole)} · ${formatDateTime(h.timestamp)}</p>
-            <p class="mt-1 text-xs font-medium text-primary">${h.requestCode || req.reqNumber} · ${h.newStatus}</p>
-            ${h.comment ? `<p class="mt-2 text-sm text-gray-600">${h.comment}</p>` : ''}
         </li>`).join('') + reviewSteps.filter(step => !step.done).map((step, index) => `
         <li class="relative pl-8 ${index < reviewSteps.length - 1 ? 'pb-8' : ''}">
           <span class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-gray-500"><i class="fas fa-clock text-[8px]"></i></span>
@@ -795,13 +807,12 @@ async function readObservationFiles() {
 
 async function changeStatus(reqId, newStatus, action, comment, attachments = []) {
     const req = db.requests.find(r => r.id === reqId);
-    try {
-        await saveRequest({ ...req, status: newStatus, _comment: comment, observationAttachments: attachments }, action);
-        showToast(`Estado: ${newStatus}`);
-        navigateTo('dashboard');
-    } catch (error) {
-        showToast(error.message, 'error');
-    }
+    if (!req) throw new Error('No se encontró el requerimiento a actualizar.');
+    const saved = await saveRequest({ ...req, status: newStatus, _comment: comment, observationAttachments: attachments }, action);
+    showToast(`Estado: ${newStatus}`);
+    // Mantenemos abierto el requerimiento para que el aprobador vea el
+    // cambio de estado y la bitácora inmediatamente.
+    navigateTo('detail', saved.id);
 }
 
 // --- 7. AUTH & HELPERS ---
