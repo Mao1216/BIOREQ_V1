@@ -92,6 +92,10 @@ module.exports = async (req, res) => {
                 const catalog = await supabase('bioreq_catalog_items?is_active=eq.true&select=code,name,item_type,category,pharmaceutical_form,unit_of_measure&order=name.asc');
                 return res.status(200).json({ items: catalog });
             }
+            if (req.query.suppliers === '1') {
+                const suppliers = await supabase('bioreq_suppliers?is_active=eq.true&select=code,name,category,contact_email,phone&order=name.asc');
+                return res.status(200).json({ items: suppliers });
+            }
             if (req.query.preview) {
                 const prefix = req.query.preview;
                 const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Lima', year: '2-digit', month: '2-digit' }).formatToParts(new Date());
