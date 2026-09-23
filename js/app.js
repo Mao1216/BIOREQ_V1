@@ -102,7 +102,7 @@ function getStatusBadge(status) {
         [STATUS.CANCELADO]: 'bg-gray-800 text-white ring-gray-900/10'
     };
     const classes = config[status] || 'bg-gray-100 text-gray-700';
-    const label = status === STATUS.APROBACION_PENDIENTE_LOG ? 'EN REVISIÓN - LOGÍSTICA' : status;
+    const label = status === STATUS.APROBACION_PENDIENTE_LOG ? 'EN REVISIÓN' : status;
     return `<span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${classes}">${label}</span>`;
 }
 
