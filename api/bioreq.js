@@ -67,13 +67,15 @@ async function addHistory(entry) {
 async function getSession(req) {
     const token = (req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith('bioreq_session='))?.slice('bioreq_session='.length);
     if (!token) return null;
-    const sessions = await supabase(`bioreq_web_sessions?token=eq.${encodeURIComponent(token)}&select=profile_id,expires_at`);
+    const sessions = await supabase(`bioreq_web_sessions?token=eq.${encodeURIComponent(token)}&select=profile_id,expires_at,active_role`);
     const session = sessions[0];
     if (!session || new Date(session.expires_at) <= new Date()) return null;
     const profiles = await supabase(`bioreq_user_profiles?id=eq.${encodeURIComponent(session.profile_id)}&is_active=eq.true&select=id,email,role,full_name`);
     const profile = profiles[0];
     const roles = { ANDF: 'ANDF_ADF', SGID: 'SGID_CDF', LOG: 'LOG', SUPER_ADMIN: 'SUPER_ADMIN' };
-    return profile ? { id: profile.id, username: profile.email, role: roles[profile.role] || profile.role, name: profile.full_name } : null;
+    const selectableRoles = ['ANDF_ADF', 'SGID_CDF', 'LOG'];
+    const activeRole = profile?.role === 'SUPER_ADMIN' && selectableRoles.includes(session.active_role) ? session.active_role : null;
+    return profile ? { id: profile.id, username: profile.email, role: activeRole || roles[profile.role] || profile.role, name: profile.full_name } : null;
 }
 
 module.exports = async (req, res) => {

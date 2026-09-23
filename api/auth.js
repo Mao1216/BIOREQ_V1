@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY;
 const APP_URL = process.env.APP_URL;
+const SELECTABLE_SIG_ROLES = ['ANDF_ADF', 'SGID_CDF', 'LOG'];
 
 function cookie(req, name) {
     return (req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))?.slice(name.length + 1) || null;
@@ -84,14 +85,30 @@ module.exports = async (req, res) => {
         if (action === 'session') {
             const token = cookie(req, 'bioreq_session');
             if (!token) return res.status(401).json({ error: 'Sin sesión.' });
-            const sessions = await rest(`bioreq_web_sessions?token=eq.${encodeURIComponent(token)}&select=profile_id,expires_at`);
+            const sessions = await rest(`bioreq_web_sessions?token=eq.${encodeURIComponent(token)}&select=profile_id,expires_at,active_role`);
             const session = sessions[0];
             if (!session || new Date(session.expires_at) <= new Date()) return res.status(401).json({ error: 'Sesión vencida.' });
             const profiles = await rest(`bioreq_user_profiles?id=eq.${encodeURIComponent(session.profile_id)}&is_active=eq.true&select=id,email,full_name,role`);
             const profile = profiles[0];
             if (!profile) return res.status(401).json({ error: 'Perfil no autorizado.' });
             const roles = { ANDF: 'ANDF_ADF', SGID: 'SGID_CDF', LOG: 'LOG', SUPER_ADMIN: 'SUPER_ADMIN' };
-            return res.status(200).json({ user: { id: profile.id, email: profile.email, name: profile.full_name, role: roles[profile.role] || profile.role } });
+            const isSig = profile.role === 'SUPER_ADMIN';
+            const activeRole = isSig && SELECTABLE_SIG_ROLES.includes(session.active_role) ? session.active_role : null;
+            return res.status(200).json({ user: { id: profile.id, email: profile.email, name: profile.full_name, role: activeRole || roles[profile.role] || profile.role, isSig, activeRole } });
+        }
+
+        if (action === 'select-role' && req.method === 'POST') {
+            const token = cookie(req, 'bioreq_session');
+            const selectedRole = req.body?.role;
+            if (!token || !SELECTABLE_SIG_ROLES.includes(selectedRole)) return res.status(400).json({ error: 'Perfil no válido.' });
+            const sessions = await rest(`bioreq_web_sessions?token=eq.${encodeURIComponent(token)}&select=profile_id,expires_at`);
+            const session = sessions[0];
+            if (!session || new Date(session.expires_at) <= new Date()) return res.status(401).json({ error: 'Sesión vencida.' });
+            const profiles = await rest(`bioreq_user_profiles?id=eq.${encodeURIComponent(session.profile_id)}&is_active=eq.true&select=id,email,full_name,role`);
+            const profile = profiles[0];
+            if (!profile || profile.role !== 'SUPER_ADMIN') return res.status(403).json({ error: 'Solo SIG puede seleccionar un perfil.' });
+            await rest(`bioreq_web_sessions?token=eq.${encodeURIComponent(token)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ active_role: selectedRole }) });
+            return res.status(200).json({ user: { id: profile.id, email: profile.email, name: profile.full_name, role: selectedRole, isSig: true, activeRole: selectedRole } });
         }
 
         return res.status(404).json({ error: 'Acción no encontrada.' });
