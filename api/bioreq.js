@@ -287,7 +287,7 @@ module.exports = async (req, res) => {
                 if (!isLogistics && !isRequester) return res.status(403).json({ error: 'Solo Logística o el solicitante de Desarrollo Farmacéutico pueden reabrir esta búsqueda.' });
                 if (!existing || oldStatus !== 'CERRADO') return res.status(409).json({ error: 'Solo es posible reabrir una búsqueda cerrada.' });
                 const rows = await supabase(`bioreq_supplier_searches?request_id=eq.${encodeURIComponent(request.id)}`, {
-                    method: 'PATCH', prefer: 'return=representation', body: JSON.stringify({ status: 'REABIERTO', reopened_at: now, closed_at: null, updated_at: now })
+                    method: 'PATCH', prefer: 'return=representation', body: JSON.stringify({ status: 'REABIERTO', reopened_at: now, sent_to_df_at: null, closed_at: null, updated_at: now })
                 });
                 if (isRequester && !isLogistics) {
                     const logisticsProfiles = await supabase('bioreq_user_profiles?role=eq.LOG&is_active=eq.true&select=id,email');
