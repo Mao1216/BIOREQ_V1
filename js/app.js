@@ -3,6 +3,7 @@ let draftCodePreview = 'TEM-Generando...';
 let autosaveTimer = null;
 let autosaveInProgress = false;
 let autosaveDirty = false;
+let formSubmissionInProgress = false;
 
 async function loadDatabase() {
     const response = await fetch('/api/bioreq');
@@ -728,7 +729,7 @@ function queueFormAutosave() {
 }
 
 async function saveFormAutomatically() {
-    if (!currentUser || currentView !== 'form') return;
+    if (!currentUser || currentView !== 'form' || formSubmissionInProgress) return;
     if (autosaveInProgress) {
         autosaveTimer = setTimeout(saveFormAutomatically, 300);
         return;
@@ -772,6 +773,8 @@ function handleFormSubmit(e) { e.preventDefault(); submitForm(formSubmitIntent |
 
 async function executeFormSave() {
     clearTimeout(autosaveTimer);
+    autosaveDirty = false;
+    formSubmissionInProgress = true;
     const status = formSubmitIntent === 'send' ? STATUS.EN_REVISION : STATUS.BORRADOR;
     const data = getFormData(status);
     data._comment = formSubmitIntent === 'send' ? 'Enviado a revisión SGID/CDF' : 'Guardado como borrador';
@@ -782,6 +785,8 @@ async function executeFormSave() {
         if (saved) { showToast('Acción exitosa'); navigateTo('dashboard'); }
     } catch (error) {
         showToast(error.message, 'error');
+    } finally {
+        formSubmissionInProgress = false;
     }
 }
 
