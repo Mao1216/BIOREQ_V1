@@ -554,8 +554,8 @@ function renderDetail(id) {
 
     const Field = (lbl, val) => `<div><dt class="text-xs font-medium text-gray-500 uppercase">${lbl}</dt><dd class="mt-1 text-sm font-medium">${val || '-'}</dd></div>`;
     const tabClass = (tab) => detailTab === tab ? 'border-primary text-primary bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300';
-    // La gestión de proveedores será una etapa futura de Logística.
-    const needsLogApproval = false;
+    // Todas las solicitudes requieren la aprobación final de Logística.
+    const needsLogApproval = true;
     const sgidApproved = hist.some(h => h.userRole === ROLES.SGID_CDF && h.action === 'aprobar');
     const logApproved = hist.some(h => h.userRole === ROLES.LOG && h.action === 'aprobar' && h.newStatus === STATUS.APROBADO);
     const reviewSteps = [
@@ -798,15 +798,15 @@ async function handleAction(reqId, actionStr) {
     }
 
     if (actionStr === 'aprobar_sgid') {
-        const confirmation = '¿Confirmas la aprobación SGID? El requerimiento cambiará a estado APROBADO.';
+        const confirmation = '¿Confirmas la aprobación SGID? El requerimiento se enviará a Logística para su aprobación final.';
         if (!window.confirm(confirmation)) return;
 
         try {
             await changeStatus(
                 reqId,
-                STATUS.APROBADO,
+                STATUS.APROBACION_PENDIENTE_LOG,
                 'aprobar',
-                'Aprobado SGID. Flujo cerrado.'
+                'Aprobado SGID. Enviado a Logística para aprobación final.'
             );
         } catch (error) {
             showToast(error.message || 'No se pudo aprobar el requerimiento.', 'error');
