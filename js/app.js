@@ -335,7 +335,6 @@ function renderSidebarMenu() {
     }
     if (currentUser.role === ROLES.LOG) {
         menu += `
-            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 mb-2">Logística</div>
             <a onclick="navigateTo('approved-providers')" class="${baseClass} ${isActive('approved-providers')}"><i class="fas fa-check-circle w-6 text-center mr-2"></i> Aprobadas</a>
         `;
     }
