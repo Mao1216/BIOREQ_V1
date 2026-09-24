@@ -557,6 +557,42 @@ function getProviderStatusBadge(status = 'BORRADOR') {
     return `<span class="inline-flex rounded px-2 py-1 text-xs font-medium ${styles[status] || styles.BORRADOR}">${status}</span>`;
 }
 
+function getProviderFlowStages(status = 'BORRADOR') {
+    const stages = [
+        { label: 'Registro', description: 'Registro del proveedor por Logística', state: 'completed' },
+        { label: 'Evaluación DF', description: 'Evaluación de Desarrollo Farmacéutico', state: 'pending' },
+        { label: 'Evaluación técnica', description: 'Revisión técnica del proveedor', state: 'pending' },
+        { label: 'Evaluación logística', description: 'Validación final de Logística', state: 'pending' }
+    ];
+    if (status === 'EN EVALUACIÓN DF') stages[1].state = 'current';
+    if (status === 'OBSERVADO') stages[1].state = 'observed';
+    if (status === 'RECHAZADO') stages[1].state = 'rejected';
+    if (status === 'EN REVISIÓN') {
+        stages[1].state = 'completed';
+        stages[2].state = 'current';
+    }
+    return stages;
+}
+
+function openProviderFlow(providerId) {
+    const provider = db.providerRegistrations.find(item => item.id === providerId);
+    if (!provider) return showToast('No se encontró el proveedor.', 'error');
+    const stageStyle = {
+        completed: { circle: 'bg-primary border-primary text-white', icon: 'fa-check', label: 'Completado' },
+        current: { circle: 'bg-purple-600 border-purple-600 text-white', icon: 'fa-clock', label: 'En revisión' },
+        pending: { circle: 'bg-white border-gray-300 text-gray-300', icon: '', label: 'Pendiente' },
+        observed: { circle: 'bg-amber-50 border-amber-400 text-amber-600', icon: 'fa-exclamation', label: 'Observado' },
+        rejected: { circle: 'bg-red-50 border-red-400 text-red-600', icon: 'fa-times', label: 'Rechazado' }
+    };
+    const stages = getProviderFlowStages(provider.status);
+    const stagesHtml = stages.map((stage, index) => {
+        const style = stageStyle[stage.state];
+        const connector = index < stages.length - 1 ? `<div class="absolute left-1/2 top-5 h-0.5 w-full ${stage.state === 'completed' ? 'bg-primary' : 'bg-gray-200'}"></div>` : '';
+        return `<div class="relative flex-1 min-w-[120px] text-center">${connector}<div class="relative z-10 mx-auto flex h-10 w-10 items-center justify-center rounded-full border-2 ${style.circle}">${style.icon ? `<i class="fas ${style.icon}"></i>` : ''}</div><p class="mt-3 font-semibold text-sm text-gray-800">${stage.label}</p><p class="mt-1 text-xs text-gray-500">${stage.description}</p><span class="mt-2 inline-flex rounded px-2 py-1 text-xs font-medium ${stage.state === 'current' ? 'bg-purple-50 text-purple-700' : stage.state === 'observed' ? 'bg-amber-50 text-amber-700' : stage.state === 'rejected' ? 'bg-red-50 text-red-700' : stage.state === 'completed' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'}">${style.label}</span></div>`;
+    }).join('');
+    openModal(`Flujo del proveedor: ${provider.supplierName}`, `<p class="mb-6 text-sm text-gray-600">${getProviderStatusBadge(provider.status)}</p><div class="overflow-x-auto pb-2"><div class="flex min-w-[580px] gap-0">${stagesHtml}</div></div><p class="mt-6 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-500">El flujo continúa automáticamente según la aprobación o la observación registrada en cada etapa.</p>`, async () => {}, 'Cerrar');
+}
+
 function getSupplierSearch(requestId) {
     return db.supplierSearches.find(search => search.requestId === requestId) || { requestId, status: 'ABIERTO', openedAt: null, sentToDfAt: null };
 }
@@ -603,7 +639,7 @@ function renderRequestProviders(requestId) {
         const isCatalogProvider = provider.isCatalogProvider === true;
         const status = isCatalogProvider ? '<span class="inline-flex rounded px-2 py-1 text-xs font-medium bg-emerald-50 text-emerald-700">Proveedor registrado</span>' : getProviderStatusBadge(provider.status);
         const documentation = isCatalogProvider ? '' : providerDocumentChecklist(provider.documentation);
-        return `<article class="bg-white rounded-lg border shadow-sm p-5"><div class="flex items-start justify-between gap-3"><div><h2 class="font-semibold text-lg">${provider.supplierName}</h2><p class="text-xs text-gray-500">${provider.manufacturer || 'Fabricante no registrado'} · ${provider.origin || 'Origen no registrado'}</p><p class="mt-1 text-xs text-gray-400"><i class="far fa-calendar-plus mr-1"></i>${isCatalogProvider ? 'Registrado en catálogo' : 'Añadido el'} ${formatDateTime(provider.createdAt)}</p></div>${status}</div><div class="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p class="text-xs text-gray-500">MOQ / costo</p><p>${(provider.moqs || []).map(item => `${item.quantity || '-'} ${provider.currency || ''} ${item.cost ? `· ${item.cost}` : ''}`).join('<br>') || '-'}</p></div><div><p class="text-xs text-gray-500">Tiempo de envío</p><p>${provider.deliveryTime || '-'}</p></div></div>${isCatalogProvider && provider.observations ? `<p class="mt-3 text-xs text-gray-500">${provider.observations}</p>` : ''}${documentation}${isOwn ? `<div class="mt-4 flex flex-wrap justify-end gap-3"><button onclick="openDocumentationModal('${provider.id}')" class="text-sm text-primary font-medium"><i class="fas fa-paperclip mr-1"></i> Añadir documentación</button>${!isClosed && ['BORRADOR', 'OBSERVADO'].includes(provider.status || 'BORRADOR') ? `<button onclick="notifyProviderToDf('${provider.id}')" class="text-sm text-sidebar font-medium"><i class="fas fa-bell mr-1"></i> Notificar</button>` : ''}</div>` : ''}</article>`;
+        return `<article class="bg-white rounded-lg border shadow-sm p-5"><div class="flex items-start justify-between gap-3"><div><h2 class="font-semibold text-lg">${provider.supplierName}</h2><p class="text-xs text-gray-500">${provider.manufacturer || 'Fabricante no registrado'} · ${provider.origin || 'Origen no registrado'}</p><p class="mt-1 text-xs text-gray-400"><i class="far fa-calendar-plus mr-1"></i>${isCatalogProvider ? 'Registrado en catálogo' : 'Añadido el'} ${formatDateTime(provider.createdAt)}</p></div>${status}</div><div class="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p class="text-xs text-gray-500">MOQ / costo</p><p>${(provider.moqs || []).map(item => `${item.quantity || '-'} ${provider.currency || ''} ${item.cost ? `· ${item.cost}` : ''}`).join('<br>') || '-'}</p></div><div><p class="text-xs text-gray-500">Tiempo de envío</p><p>${provider.deliveryTime || '-'}</p></div></div>${isCatalogProvider && provider.observations ? `<p class="mt-3 text-xs text-gray-500">${provider.observations}</p>` : ''}${documentation}${isOwn ? `<div class="mt-4 flex flex-wrap justify-end gap-3"><button onclick="openProviderFlow('${provider.id}')" class="text-sm text-gray-600 font-medium"><i class="fas fa-project-diagram mr-1"></i> Flujo</button><button onclick="openDocumentationModal('${provider.id}')" class="text-sm text-primary font-medium"><i class="fas fa-paperclip mr-1"></i> Añadir documentación</button>${!isClosed && ['BORRADOR', 'OBSERVADO'].includes(provider.status || 'BORRADOR') ? `<button onclick="notifyProviderToDf('${provider.id}')" class="text-sm text-sidebar font-medium"><i class="fas fa-bell mr-1"></i> Notificar</button>` : ''}</div>` : ''}</article>`;
     }).join('') : '<div class="lg:col-span-2 rounded-lg border border-dashed bg-white py-14 text-center text-sm text-gray-500"><i class="fas fa-building text-2xl text-gray-300 mb-3 block"></i>Aún no se han registrado proveedores para este requerimiento.</div>';
     let mainAction = '';
     if (isClosed) mainAction = `<button onclick="reopenSupplierSearch('${request.id}', 'logistics')" class="inline-flex items-center gap-2 rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"><i class="fas fa-rotate-right"></i> Reabrir búsqueda</button>`;
