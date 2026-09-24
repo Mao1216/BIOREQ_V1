@@ -189,6 +189,19 @@ async function notifyRequesterByEmail(requestId) {
     }, 'Enviando notificación…');
 }
 
+async function updateProviderStatus(providerId, status, action, comment = '') {
+    return withLoading(async () => {
+        const response = await fetch('/api/bioreq', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: { providerId, status, action, comment }, action: 'update_provider_status' })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'No se pudo actualizar el proveedor.');
+        await loadDatabase();
+        return result.provider;
+    }, 'Actualizando proveedor…');
+}
+
 function getRequestsByRole() {
     if (!currentUser) return [];
     if (currentUser.role === ROLES.SUPER_ADMIN) return db.requests;
@@ -331,6 +344,7 @@ function renderSidebarMenu() {
         menu += `
             <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 mb-2">Acciones</div>
             <a onclick="navigateTo('form')" class="${baseClass} ${isActive('form')}"><i class="fas fa-plus-circle w-6 text-center mr-2"></i> Nuevo Requerimiento</a>
+            <a onclick="navigateTo('provider-review')" class="${baseClass} ${isActive('provider-review')}"><i class="fas fa-building w-6 text-center mr-2"></i> Proveedores en revisión</a>
         `;
     }
     if (currentUser.role === ROLES.LOG) {
@@ -348,6 +362,7 @@ function renderCurrentView() {
         case 'detail': return renderDetail(viewContextId);
         case 'approved-providers': return renderApprovedProviders();
         case 'request-providers': return renderRequestProviders(viewContextId);
+        case 'provider-review': return renderProviderReview();
         default: return renderDashboard();
     }
 }
@@ -512,6 +527,17 @@ function providerDocumentChecklist(documents = []) {
     }).join('')}</div>`;
 }
 
+function getProviderStatusBadge(status = 'BORRADOR') {
+    const styles = {
+        BORRADOR: 'bg-gray-100 text-gray-700',
+        'EN EVALUACIÓN DF': 'bg-blue-50 text-blue-700',
+        OBSERVADO: 'bg-amber-50 text-amber-700',
+        RECHAZADO: 'bg-red-50 text-red-700',
+        'EN REVISIÓN': 'bg-purple-50 text-purple-700'
+    };
+    return `<span class="inline-flex rounded px-2 py-1 text-xs font-medium ${styles[status] || styles.BORRADOR}">${status}</span>`;
+}
+
 function renderApprovedProviders() {
     if (![ROLES.LOG, ROLES.SUPER_ADMIN].includes(currentUser?.role)) return '<p class="text-sm text-gray-500">No tienes acceso a esta sección.</p>';
     const approved = db.requests.filter(request => request.status === STATUS.APROBADO).sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
@@ -536,8 +562,8 @@ function renderRequestProviders(requestId) {
         <div class="max-w-6xl mx-auto">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-7"><div><button onclick="navigateTo('approved-providers')" class="text-sm text-primary font-medium mb-3"><i class="fas fa-arrow-left mr-1"></i> Aprobadas</button><h1 class="text-2xl font-bold">Proveedores</h1><p class="mt-1 text-sm text-gray-500"><span class="font-semibold text-gray-700">${request.reqNumber}</span> · ${request.productName || '(Sin producto)'}</p><p class="text-sm text-gray-500">${request.requirementDescription || request.description || ''}</p></div><button onclick="openProviderRegistration('${request.id}')" class="bg-primary hover:bg-primaryHover text-white px-4 py-2 rounded-md shadow text-sm font-medium"><i class="fas fa-plus mr-1"></i> Agregar proveedor</button></div>
             ${previousProviders.length && !ownProviders.length ? '<div class="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"><i class="fas fa-history mr-2"></i>Se muestran automáticamente proveedores registrados anteriormente para este producto. Puedes añadir alternativas nuevas.</div>' : ''}
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">${providers.length ? providers.map(provider => `<article class="bg-white rounded-lg border shadow-sm p-5"><div class="flex items-start justify-between gap-3"><div><h2 class="font-semibold text-lg">${provider.supplierName}</h2><p class="text-xs text-gray-500">${provider.manufacturer || 'Fabricante no registrado'} · ${provider.origin || 'Origen no registrado'}</p></div>${provider.requestId !== requestId ? '<span class="text-xs rounded bg-blue-50 text-blue-700 px-2 py-1">Proveedor previo</span>' : '<span class="text-xs rounded bg-green-50 text-green-700 px-2 py-1">Registrado aquí</span>'}</div><div class="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p class="text-xs text-gray-500">MOQ / costo</p><p>${(provider.moqs || []).map(item => `${item.quantity || '-'} ${provider.currency || ''} ${item.cost ? `· ${item.cost}` : ''}`).join('<br>') || '-'}</p></div><div><p class="text-xs text-gray-500">Tiempo de envío</p><p>${provider.deliveryTime || '-'}</p></div></div>${providerDocumentChecklist(provider.documentation)}<div class="mt-4 flex justify-end"><button onclick="openDocumentationModal('${provider.id}')" class="text-sm text-primary font-medium"><i class="fas fa-paperclip mr-1"></i> Añadir documentación</button></div></article>`).join('') : '<div class="lg:col-span-2 rounded-lg border border-dashed bg-white py-14 text-center text-sm text-gray-500"><i class="fas fa-building text-2xl text-gray-300 mb-3 block"></i>Aún no se han registrado proveedores para este requerimiento.</div>'}</div>
-            <div class="mt-8 flex justify-end"><button onclick="confirmProviderNotification('${request.id}')" class="inline-flex items-center gap-2 rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"><i class="fas fa-bell"></i> Notificar</button></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">${providers.length ? providers.map(provider => `<article class="bg-white rounded-lg border shadow-sm p-5"><div class="flex items-start justify-between gap-3"><div><h2 class="font-semibold text-lg">${provider.supplierName}</h2><p class="text-xs text-gray-500">${provider.manufacturer || 'Fabricante no registrado'} · ${provider.origin || 'Origen no registrado'}</p></div>${getProviderStatusBadge(provider.status)}</div><div class="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p class="text-xs text-gray-500">MOQ / costo</p><p>${(provider.moqs || []).map(item => `${item.quantity || '-'} ${provider.currency || ''} ${item.cost ? `· ${item.cost}` : ''}`).join('<br>') || '-'}</p></div><div><p class="text-xs text-gray-500">Tiempo de envío</p><p>${provider.deliveryTime || '-'}</p></div></div>${providerDocumentChecklist(provider.documentation)}<div class="mt-4 flex flex-wrap justify-end gap-3"><button onclick="openDocumentationModal('${provider.id}')" class="text-sm text-primary font-medium"><i class="fas fa-paperclip mr-1"></i> Añadir documentación</button>${['BORRADOR', 'OBSERVADO'].includes(provider.status || 'BORRADOR') && provider.requestId === requestId ? `<button onclick="notifyProviderToDf('${provider.id}')" class="text-sm text-sidebar font-medium"><i class="fas fa-bell mr-1"></i> Notificar</button>` : ''}</div></article>`).join('') : '<div class="lg:col-span-2 rounded-lg border border-dashed bg-white py-14 text-center text-sm text-gray-500"><i class="fas fa-building text-2xl text-gray-300 mb-3 block"></i>Aún no se han registrado proveedores para este requerimiento.</div>'}</div>
+            <div class="mt-8 flex justify-end"><button onclick="sendRequestProvidersToDf('${request.id}')" class="inline-flex items-center gap-2 rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"><i class="fas fa-share"></i> Enviar a revisión DF</button></div>
         </div>`;
 }
 
@@ -576,11 +602,40 @@ function openDocumentationModal(providerId) {
     }, 'Guardar documentación');
 }
 
-function confirmProviderNotification(requestId) {
-    openModal('Notificar a Desarrollo Farmacéutico', '<p class="text-sm text-gray-600">Se enviará un correo al solicitante indicando que Logística ya cuenta con proveedores encontrados.</p>', async () => {
-        const result = await notifyRequesterByEmail(requestId);
-        showToast(result.emailSent ? 'Notificación enviada al solicitante.' : 'Notificación registrada. Falta configurar el servicio de correo para el envío automático.', result.emailSent ? 'success' : 'warning');
+function notifyProviderToDf(providerId) {
+    openModal('Notificar a Desarrollo Farmacéutico', '<p class="text-sm text-gray-600">El proveedor pasará a evaluación de Desarrollo Farmacéutico.</p>', async () => {
+        await updateProviderStatus(providerId, 'EN EVALUACIÓN DF', 'notificar_df', 'Proveedor enviado a evaluación de Desarrollo Farmacéutico.');
+        showToast('Proveedor enviado a evaluación de Desarrollo Farmacéutico.');
+        renderApp();
     }, 'Notificar');
+}
+
+async function sendRequestProvidersToDf(requestId) {
+    const pending = db.providerRegistrations.filter(provider => provider.requestId === requestId && ['BORRADOR', 'OBSERVADO'].includes(provider.status || 'BORRADOR'));
+    if (!pending.length) return showToast('No hay proveedores en borrador u observados para enviar.', 'warning');
+    openModal('Enviar a revisión DF', `<p class="text-sm text-gray-600">Se enviarán ${pending.length} proveedor(es) a evaluación de Desarrollo Farmacéutico.</p>`, async () => {
+        for (const provider of pending) await updateProviderStatus(provider.id, 'EN EVALUACIÓN DF', 'enviar_revision_df', 'Proveedor enviado a evaluación de Desarrollo Farmacéutico.');
+        showToast('Proveedores enviados a revisión DF.');
+        navigateTo('request-providers', requestId);
+    }, 'Enviar a revisión DF');
+}
+
+function renderProviderReview() {
+    const ownRequestIds = new Set(db.requests.filter(request => request.requesterId === currentUser.id).map(request => request.id));
+    const providers = db.providerRegistrations.filter(provider => ownRequestIds.has(provider.requestId) && provider.status === 'EN EVALUACIÓN DF');
+    return `<div class="max-w-6xl mx-auto"><div class="mb-6"><h1 class="text-2xl font-bold">Proveedores en revisión</h1><p class="text-sm text-gray-500">Evalúa los proveedores enviados por Logística.</p></div><div class="grid grid-cols-1 lg:grid-cols-2 gap-5">${providers.length ? providers.map(provider => { const request = db.requests.find(item => item.id === provider.requestId); return `<article class="bg-white rounded-lg border shadow-sm p-5"><div class="flex items-start justify-between gap-3"><div><h2 class="font-semibold text-lg">${provider.supplierName}</h2><p class="text-xs text-gray-500">${request?.reqNumber || ''} · ${request?.productName || ''}</p></div>${getProviderStatusBadge(provider.status)}</div><div class="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p class="text-xs text-gray-500">MOQ / costo</p><p>${(provider.moqs || []).map(item => `${item.quantity || '-'} ${provider.currency || ''} ${item.cost ? `· ${item.cost}` : ''}`).join('<br>') || '-'}</p></div><div><p class="text-xs text-gray-500">Tiempo de envío</p><p>${provider.deliveryTime || '-'}</p></div></div>${providerDocumentChecklist(provider.documentation)}<div class="mt-5 flex flex-wrap justify-end gap-2"><button onclick="reviewProvider('${provider.id}','OBSERVADO')" class="rounded border border-amber-400 px-3 py-2 text-sm text-amber-700">Observar</button><button onclick="reviewProvider('${provider.id}','RECHAZADO')" class="rounded border border-red-400 px-3 py-2 text-sm text-red-700">Rechazar</button><button onclick="reviewProvider('${provider.id}','EN REVISIÓN')" class="rounded bg-primary px-3 py-2 text-sm text-white">Aprobar</button></div></article>`; }).join('') : '<div class="lg:col-span-2 bg-white rounded-lg border border-dashed py-14 text-center text-sm text-gray-500">No tienes proveedores pendientes de evaluación.</div>'}</div></div>`;
+}
+
+function reviewProvider(providerId, status) {
+    const labels = { OBSERVADO: 'Observar proveedor', RECHAZADO: 'Rechazar proveedor', 'EN REVISIÓN': 'Aprobar proveedor' };
+    const needsComment = status !== 'EN REVISIÓN';
+    openModal(labels[status], `<label class="block text-sm font-medium mb-1">${needsComment ? 'Comentario *' : 'Comentario (opcional)'}</label><textarea id="provider-review-comment" class="w-full border rounded p-2" rows="3" placeholder="${needsComment ? 'Indica el motivo' : 'Comentario de aprobación'}"></textarea>`, async () => {
+        const comment = document.getElementById('provider-review-comment').value.trim();
+        if (needsComment && !comment) throw new Error('El comentario es obligatorio.');
+        await updateProviderStatus(providerId, status, status === 'EN REVISIÓN' ? 'aprobar' : status === 'OBSERVADO' ? 'observar' : 'rechazar', comment);
+        showToast(status === 'EN REVISIÓN' ? 'Proveedor aprobado y enviado a la siguiente revisión.' : `Proveedor ${status.toLowerCase()}.`);
+        navigateTo('provider-review');
+    }, labels[status]);
 }
 
 function renderStatCard(title, value, icon, colorClass) {
