@@ -88,6 +88,7 @@ function mapSupplierRegistration(row) {
         wsCost: row.ws_cost,
         observations: row.observations,
         documentation: row.documentation || [],
+        status: row.status || 'BORRADOR',
         createdBy: row.created_by,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -191,6 +192,7 @@ module.exports = async (req, res) => {
                 ws_cost: data.wsCost || null,
                 observations: data.observations || null,
                 documentation: Array.isArray(data.documentation) ? data.documentation : [],
+                status: data.status || 'BORRADOR',
                 updated_at: new Date().toISOString()
             };
             let saved;
@@ -206,6 +208,31 @@ module.exports = async (req, res) => {
                 saved = rows[0];
             }
             return res.status(200).json({ provider: mapSupplierRegistration(saved) });
+        }
+
+        if (action === 'update_provider_status') {
+            const rows = await supabase(`bioreq_supplier_registrations?id=eq.${encodeURIComponent(data.providerId)}&select=*`);
+            const provider = rows[0];
+            if (!provider) return res.status(404).json({ error: 'Proveedor no encontrado.' });
+            const oldStatus = provider.status || 'BORRADOR';
+            const transitions = {
+                BORRADOR: ['EN EVALUACIÓN DF'],
+                'EN EVALUACIÓN DF': ['OBSERVADO', 'RECHAZADO', 'EN REVISIÓN'],
+                OBSERVADO: ['EN EVALUACIÓN DF'],
+                RECHAZADO: [],
+                'EN REVISIÓN': []
+            };
+            if (!transitions[oldStatus]?.includes(data.status)) return res.status(409).json({ error: `No se puede cambiar el estado de ${oldStatus} a ${data.status}.` });
+            const requiresLog = ['BORRADOR', 'OBSERVADO'].includes(oldStatus);
+            if (requiresLog && !['LOG', 'SUPER_ADMIN'].includes(currentUser.role)) return res.status(403).json({ error: 'Esta acción corresponde a Logística.' });
+            if (!requiresLog && !['ANDF_ADF', 'SUPER_ADMIN'].includes(currentUser.role)) return res.status(403).json({ error: 'Esta acción corresponde a Desarrollo Farmacéutico.' });
+            const savedRows = await supabase(`bioreq_supplier_registrations?id=eq.${encodeURIComponent(data.providerId)}`, {
+                method: 'PATCH', prefer: 'return=representation', body: JSON.stringify({ status: data.status, updated_at: new Date().toISOString() })
+            });
+            await supabase('bioreq_supplier_history', {
+                method: 'POST', prefer: 'return=minimal', body: JSON.stringify({ supplier_registration_id: provider.id, old_status: oldStatus, new_status: data.status, action: data.action || 'actualizar_estado', user_id: currentUser.id, user_role: currentUser.role, user_name: currentUser.name, comment: data.comment || null })
+            });
+            return res.status(200).json({ provider: mapSupplierRegistration(savedRows[0]) });
         }
 
         if (action === 'notify_requester') {
