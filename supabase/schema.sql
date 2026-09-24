@@ -82,6 +82,35 @@ alter table public.bioreq_supplier_registrations add column if not exists status
 create index if not exists bioreq_supplier_registrations_request_idx on public.bioreq_supplier_registrations (request_id, created_at);
 create index if not exists bioreq_supplier_registrations_product_idx on public.bioreq_supplier_registrations (product_code, created_at);
 
+-- Catálogo de proveedores ya vinculados a un producto existente. No depende de
+-- un requerimiento específico y permite que Logística los vea automáticamente.
+create table if not exists public.bioreq_product_suppliers (
+  id uuid primary key default gen_random_uuid(),
+  product_code text not null,
+  product_name text not null,
+  supplier_name text not null,
+  manufacturer text,
+  origin text,
+  moqs jsonb not null default '[]'::jsonb,
+  currency text,
+  delivery_time text,
+  purchase_order_type text,
+  payment_terms text,
+  invoice_type text,
+  incoterm text,
+  working_standard text,
+  ws_cost text,
+  documentation jsonb not null default '[]'::jsonb,
+  observations text,
+  source text not null default 'CATALOGO_INICIAL_REFERENCIAL',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (product_code, supplier_name)
+);
+
+create index if not exists bioreq_product_suppliers_product_idx on public.bioreq_product_suppliers (product_code, is_active);
+
 -- Trazabilidad de avisos enviados por Logística al solicitante.
 create table if not exists public.bioreq_notifications (
   id uuid primary key default gen_random_uuid(),
@@ -180,6 +209,7 @@ alter table public.bioreq_sessions enable row level security;
 alter table public.bioreq_requests enable row level security;
 alter table public.bioreq_history enable row level security;
 alter table public.bioreq_supplier_registrations enable row level security;
+alter table public.bioreq_product_suppliers enable row level security;
 alter table public.bioreq_notifications enable row level security;
 alter table public.bioreq_supplier_history enable row level security;
 alter table public.bioreq_supplier_searches enable row level security;
