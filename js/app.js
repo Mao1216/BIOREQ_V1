@@ -48,6 +48,8 @@ async function loadDatabase() {
         if (catalogResponse.ok) db.catalogItems = (await catalogResponse.json()).items || [];
         const suppliersResponse = await fetch('/api/bioreq?suppliers=1');
         if (suppliersResponse.ok) db.suppliers = (await suppliersResponse.json()).items || [];
+        const registrationsResponse = await fetch('/api/bioreq?providerRegistrations=1');
+        if (registrationsResponse.ok) db.providerRegistrations = (await registrationsResponse.json()).items || [];
     }, 'Actualizando información…');
 }
 
@@ -160,6 +162,31 @@ async function saveRequest(data, action) {
         await loadDatabase();
         return result.request;
     }, 'Guardando cambios…');
+}
+
+async function saveProviderRegistration(provider) {
+    return withLoading(async () => {
+        const response = await fetch('/api/bioreq', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: provider, action: 'save_provider' })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'No se pudo guardar el proveedor.');
+        await loadDatabase();
+        return result.provider;
+    }, 'Guardando proveedor…');
+}
+
+async function notifyRequesterByEmail(requestId) {
+    return withLoading(async () => {
+        const response = await fetch('/api/bioreq', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: { requestId }, action: 'notify_requester' })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'No se pudo registrar la notificación.');
+        return result;
+    }, 'Enviando notificación…');
 }
 
 function getRequestsByRole() {
@@ -306,6 +333,12 @@ function renderSidebarMenu() {
             <a onclick="navigateTo('form')" class="${baseClass} ${isActive('form')}"><i class="fas fa-plus-circle w-6 text-center mr-2"></i> Nuevo Requerimiento</a>
         `;
     }
+    if (currentUser.role === ROLES.LOG) {
+        menu += `
+            <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 mb-2">Logística</div>
+            <a onclick="navigateTo('approved-providers')" class="${baseClass} ${isActive('approved-providers')}"><i class="fas fa-check-circle w-6 text-center mr-2"></i> Aprobadas</a>
+        `;
+    }
     return menu;
 }
 
@@ -314,6 +347,8 @@ function renderCurrentView() {
         case 'dashboard': return renderDashboard();
         case 'form': return renderForm();
         case 'detail': return renderDetail(viewContextId);
+        case 'approved-providers': return renderApprovedProviders();
+        case 'request-providers': return renderRequestProviders(viewContextId);
         default: return renderDashboard();
     }
 }
@@ -384,7 +419,11 @@ function renderDashboard() {
     let tableTitle = 'Mis Requerimientos';
     let tableData = [...requests].reverse();
     if (currentUser.role === ROLES.SGID_CDF) { tableTitle = 'Bandeja - SGID/CDF'; tableData.sort((a,b) => a.status===STATUS.EN_REVISION?-1:1); }
-    else if (currentUser.role === ROLES.LOG) { tableTitle = 'Solicitudes Derivadas'; tableData.sort((a,b) => a.status===STATUS.APROBACION_PENDIENTE_LOG?-1:1); }
+    else if (currentUser.role === ROLES.LOG) {
+        tableTitle = 'Solicitudes Derivadas';
+        // Las aprobadas se administran desde la sección independiente "Aprobadas".
+        tableData = tableData.filter(request => request.status === STATUS.APROBACION_PENDIENTE_LOG);
+    }
 
     // Filters
     if (currentFilters.num) tableData = tableData.filter(r => r.reqNumber.toLowerCase().includes(currentFilters.num));
@@ -459,6 +498,90 @@ function getMonitorTimestamp(req) {
         .filter(h => h.requestId === req.id && h.newStatus === STATUS.EN_REVISION)
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
     return sentEvent?.timestamp || req.updatedAt || req.createdAt || req.date;
+}
+
+function getProductCode(request) {
+    const match = String(request?.productName || '').match(/^\s*([A-Za-z0-9-]+)\s+-\s+/);
+    return match?.[1] || '';
+}
+
+function providerDocumentChecklist(documents = []) {
+    const expected = ['COA', 'Ficha técnica', 'Hoja de seguridad'];
+    return `<div class="mt-3 text-xs text-gray-600 space-y-1">${expected.map(type => {
+        const exists = documents.some(document => document.documentType === type);
+        return `<div class="flex items-center gap-2"><i class="fas ${exists ? 'fa-check-square text-green-600' : 'fa-square text-gray-300'}"></i>${type}</div>`;
+    }).join('')}</div>`;
+}
+
+function renderApprovedProviders() {
+    if (![ROLES.LOG, ROLES.SUPER_ADMIN].includes(currentUser?.role)) return '<p class="text-sm text-gray-500">No tienes acceso a esta sección.</p>';
+    const approved = db.requests.filter(request => request.status === STATUS.APROBADO).sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+    return `
+        <div class="max-w-7xl mx-auto">
+            <div class="flex items-end justify-between mb-6"><div><h1 class="text-2xl font-bold">Aprobadas</h1><p class="text-sm text-gray-500">Gestión de proveedores para requerimientos aprobados.</p></div><button onclick="navigateTo('dashboard')" class="text-sm text-primary font-medium"><i class="fas fa-arrow-left mr-1"></i> Solicitudes derivadas</button></div>
+            <div class="bg-white rounded-lg shadow border border-gray-200 overflow-hidden"><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">N° Solicitud / Fecha</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto / Artículo</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proveedores</th></tr></thead><tbody class="divide-y divide-gray-200">${approved.length ? approved.map(request => {
+                const count = db.providerRegistrations.filter(provider => provider.requestId === request.id).length;
+                return `<tr class="hover:bg-gray-50"><td class="px-6 py-4 whitespace-nowrap"><div class="font-medium">${request.reqNumber}</div><div class="text-xs text-gray-500">${formatDateTime(request.updatedAt || request.createdAt)}</div></td><td class="px-6 py-4"><div class="text-sm font-medium">${request.productName || '(Sin nombre)'}</div><div class="text-xs text-gray-500">${request.articleType || '-'}</div></td><td class="px-6 py-4">${getStatusBadge(request.status)}</td><td class="px-6 py-4"><button onclick="navigateTo('request-providers','${request.id}')" title="Ver proveedores" class="inline-flex items-center gap-2 text-primary hover:bg-blue-50 px-3 py-2 rounded-md text-sm font-medium"><i class="fas fa-eye"></i> Ver${count ? ` <span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs">${count}</span>` : ''}</button></td></tr>`;
+            }).join('') : '<tr><td colspan="4" class="px-6 py-10 text-center text-sm text-gray-500">Aún no hay solicitudes aprobadas.</td></tr>'}</tbody></table></div></div>
+        </div>`;
+}
+
+function renderRequestProviders(requestId) {
+    const request = db.requests.find(item => item.id === requestId);
+    if (!request) return '<p class="text-sm text-gray-500">No se encontró el requerimiento.</p>';
+    const productCode = getProductCode(request);
+    const ownProviders = db.providerRegistrations.filter(provider => provider.requestId === requestId);
+    const previousProviders = productCode ? db.providerRegistrations.filter(provider => provider.productCode === productCode && provider.requestId !== requestId) : [];
+    const providers = [...ownProviders, ...previousProviders.filter(provider => !ownProviders.some(own => own.id === provider.id))];
+    return `
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-7"><div><button onclick="navigateTo('approved-providers')" class="text-sm text-primary font-medium mb-3"><i class="fas fa-arrow-left mr-1"></i> Aprobadas</button><h1 class="text-2xl font-bold">Proveedores</h1><p class="mt-1 text-sm text-gray-500"><span class="font-semibold text-gray-700">${request.reqNumber}</span> · ${request.productName || '(Sin producto)'}</p><p class="text-sm text-gray-500">${request.requirementDescription || request.description || ''}</p></div><button onclick="openProviderRegistration('${request.id}')" class="bg-primary hover:bg-primaryHover text-white px-4 py-2 rounded-md shadow text-sm font-medium"><i class="fas fa-plus mr-1"></i> Agregar proveedor</button></div>
+            ${previousProviders.length && !ownProviders.length ? '<div class="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"><i class="fas fa-history mr-2"></i>Se muestran automáticamente proveedores registrados anteriormente para este producto. Puedes añadir alternativas nuevas.</div>' : ''}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">${providers.length ? providers.map(provider => `<article class="bg-white rounded-lg border shadow-sm p-5"><div class="flex items-start justify-between gap-3"><div><h2 class="font-semibold text-lg">${provider.supplierName}</h2><p class="text-xs text-gray-500">${provider.manufacturer || 'Fabricante no registrado'} · ${provider.origin || 'Origen no registrado'}</p></div>${provider.requestId !== requestId ? '<span class="text-xs rounded bg-blue-50 text-blue-700 px-2 py-1">Proveedor previo</span>' : '<span class="text-xs rounded bg-green-50 text-green-700 px-2 py-1">Registrado aquí</span>'}</div><div class="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p class="text-xs text-gray-500">MOQ / costo</p><p>${(provider.moqs || []).map(item => `${item.quantity || '-'} ${provider.currency || ''} ${item.cost ? `· ${item.cost}` : ''}`).join('<br>') || '-'}</p></div><div><p class="text-xs text-gray-500">Tiempo de envío</p><p>${provider.deliveryTime || '-'}</p></div></div>${providerDocumentChecklist(provider.documentation)}<div class="mt-4 flex justify-end"><button onclick="openDocumentationModal('${provider.id}')" class="text-sm text-primary font-medium"><i class="fas fa-paperclip mr-1"></i> Añadir documentación</button></div></article>`).join('') : '<div class="lg:col-span-2 rounded-lg border border-dashed bg-white py-14 text-center text-sm text-gray-500"><i class="fas fa-building text-2xl text-gray-300 mb-3 block"></i>Aún no se han registrado proveedores para este requerimiento.</div>'}</div>
+            <div class="mt-8 flex justify-end"><button onclick="confirmProviderNotification('${request.id}')" class="inline-flex items-center gap-2 rounded-md bg-sidebar px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"><i class="fas fa-bell"></i> Notificar</button></div>
+        </div>`;
+}
+
+function addMoqField(quantity = '', cost = '') {
+    const container = document.getElementById('provider-moqs');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'provider-moq-row grid grid-cols-[1fr_1fr_auto] gap-2';
+    row.innerHTML = `<input type="text" value="${quantity}" placeholder="MOQ" class="provider-moq border rounded p-2 text-sm"><input type="text" value="${cost}" placeholder="Costo" class="provider-cost border rounded p-2 text-sm"><button type="button" onclick="this.parentElement.remove()" class="text-gray-400 hover:text-red-600 px-2"><i class="fas fa-times"></i></button>`;
+    container.appendChild(row);
+}
+
+function openProviderRegistration(requestId) {
+    const request = db.requests.find(item => item.id === requestId);
+    if (!request) return;
+    openModal('Agregar proveedor', `<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm"><div class="md:col-span-2 rounded bg-gray-50 p-3 text-gray-600"><span class="font-medium">${request.reqNumber}</span> · ${request.productName || '(Sin producto)'}</div><div><label class="block mb-1 font-medium">Fecha</label><input disabled value="${getCurrentDateTime()}" class="w-full border rounded p-2 bg-gray-100 text-gray-500"></div><div><label class="block mb-1 font-medium">Proveedor *</label><input id="provider-name" class="w-full border rounded p-2" placeholder="Nombre del proveedor"></div><div><label class="block mb-1 font-medium">Fabricante</label><input id="provider-manufacturer" class="w-full border rounded p-2"></div><div><label class="block mb-1 font-medium">Origen</label><input id="provider-origin" class="w-full border rounded p-2"></div><div class="md:col-span-2"><label class="block mb-1 font-medium">Cantidades mínimas de compra</label><div id="provider-moqs" class="space-y-2"><div class="provider-moq-row grid grid-cols-[1fr_1fr_auto] gap-2"><input class="provider-moq border rounded p-2" placeholder="MOQ 1"><input class="provider-cost border rounded p-2" placeholder="Costo 1"><span></span></div></div><button type="button" onclick="addMoqField()" class="mt-2 text-xs text-primary font-medium">+ Añadir MOQ</button></div><div><label class="block mb-1 font-medium">Moneda</label><select id="provider-currency" class="w-full border rounded p-2"><option value="">Seleccione</option><option>PEN</option><option>USD</option><option>EUR</option></select></div><div><label class="block mb-1 font-medium">Tiempo de envío</label><input id="provider-delivery" class="w-full border rounded p-2" placeholder="Ej. 30 días"></div><div><label class="block mb-1 font-medium">Tipo de OC (según Oracle)</label><select id="provider-oc" class="w-full border rounded p-2"><option>Importación</option><option>Nacional</option></select></div><div><label class="block mb-1 font-medium">Condición de pago</label><input id="provider-payment" class="w-full border rounded p-2"></div><div><label class="block mb-1 font-medium">Tipo de comprobante</label><input id="provider-invoice" class="w-full border rounded p-2"></div><div><label class="block mb-1 font-medium">Incoterm</label><input id="provider-incoterm" class="w-full border rounded p-2"></div><div><label class="block mb-1 font-medium">Working estándar</label><select id="provider-working" class="w-full border rounded p-2"><option value="">Seleccione</option><option>Sí</option><option>No</option></select></div><div><label class="block mb-1 font-medium">Costo de W/S</label><input id="provider-ws-cost" class="w-full border rounded p-2"></div><div class="md:col-span-2"><label class="block mb-1 font-medium">Observaciones</label><textarea id="provider-observations" class="w-full border rounded p-2" rows="2"></textarea></div></div>`, async () => {
+        const moqs = [...document.querySelectorAll('.provider-moq-row')].map(row => ({ quantity: row.querySelector('.provider-moq').value.trim(), cost: row.querySelector('.provider-cost').value.trim() })).filter(item => item.quantity || item.cost);
+        const provider = await saveProviderRegistration({ requestId, productCode: getProductCode(request), supplierName: document.getElementById('provider-name').value, manufacturer: document.getElementById('provider-manufacturer').value, origin: document.getElementById('provider-origin').value, moqs, currency: document.getElementById('provider-currency').value, deliveryTime: document.getElementById('provider-delivery').value, purchaseOrderType: document.getElementById('provider-oc').value, paymentTerms: document.getElementById('provider-payment').value, invoiceType: document.getElementById('provider-invoice').value, incoterm: document.getElementById('provider-incoterm').value, workingStandard: document.getElementById('provider-working').value, wsCost: document.getElementById('provider-ws-cost').value, observations: document.getElementById('provider-observations').value, documentation: [] });
+        showToast('Proveedor registrado. Ya puedes añadir su documentación.');
+        navigateTo('request-providers', provider.requestId);
+    }, 'Guardar proveedor');
+}
+
+function openDocumentationModal(providerId) {
+    const provider = db.providerRegistrations.find(item => item.id === providerId);
+    if (!provider) return;
+    openModal('Añadir documentación', '<p class="mb-3 text-sm text-gray-600">Selecciona uno o varios tipos de documento y adjunta sus archivos en el mismo orden.</p><label class="block text-sm font-medium mb-1">Documentos</label><select id="provider-document-types" multiple class="w-full border rounded p-2 h-28"><option>COA</option><option>Ficha técnica</option><option>Hoja de seguridad</option><option>Otros documentos</option></select><label class="block text-sm font-medium mt-4 mb-1">Archivos</label><input id="provider-document-files" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" class="w-full text-sm"><p class="mt-2 text-xs text-gray-500">Máximo 1.5 MB por archivo.</p>', async () => {
+        const types = [...document.getElementById('provider-document-types').selectedOptions].map(option => option.value);
+        const files = [...document.getElementById('provider-document-files').files];
+        if (!types.length || !files.length) throw new Error('Selecciona el tipo de documento y al menos un archivo.');
+        if (types.length > 1 && types.length !== files.length) throw new Error('Para varios tipos, adjunta un archivo por cada tipo en el mismo orden.');
+        const documents = await Promise.all(files.map((file, index) => new Promise((resolve, reject) => { if (file.size > 1.5 * 1024 * 1024) return reject(new Error(`${file.name} supera 1.5 MB.`)); const reader = new FileReader(); reader.onload = () => resolve({ documentType: types[types.length === 1 ? 0 : index], name: file.name, type: file.type, dataUrl: reader.result }); reader.onerror = () => reject(new Error(`No se pudo leer ${file.name}.`)); reader.readAsDataURL(file); })));
+        await saveProviderRegistration({ ...provider, documentation: [...(provider.documentation || []), ...documents] });
+        showToast('Documentación añadida correctamente.');
+        navigateTo('request-providers', provider.requestId);
+    }, 'Guardar documentación');
+}
+
+function confirmProviderNotification(requestId) {
+    openModal('Notificar a Desarrollo Farmacéutico', '<p class="text-sm text-gray-600">Se enviará un correo al solicitante indicando que Logística ya cuenta con proveedores encontrados.</p>', async () => {
+        const result = await notifyRequesterByEmail(requestId);
+        showToast(result.emailSent ? 'Notificación enviada al solicitante.' : 'Notificación registrada. Falta configurar el servicio de correo para el envío automático.', result.emailSent ? 'success' : 'warning');
+    }, 'Notificar');
 }
 
 function renderStatCard(title, value, icon, colorClass) {
