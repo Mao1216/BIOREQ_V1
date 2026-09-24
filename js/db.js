@@ -29,7 +29,7 @@ const LISTS = {
 
 // La información operativa y las cuentas se consultan y guardan exclusivamente
 // en Supabase mediante /api/bioreq. No se utiliza almacenamiento del navegador.
-let db = { requests: [], history: [], catalogItems: [], suppliers: [], providerRegistrations: [] };
+let db = { requests: [], history: [], catalogItems: [], suppliers: [], providerRegistrations: [], supplierSearches: [] };
 
 // Current App State
 let currentUser = null;
