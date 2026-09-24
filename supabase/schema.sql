@@ -111,6 +111,20 @@ create table if not exists public.bioreq_supplier_history (
 
 create index if not exists bioreq_supplier_history_registration_idx on public.bioreq_supplier_history (supplier_registration_id, created_at);
 
+-- Estado de la búsqueda de proveedores por requerimiento. Es independiente del
+-- estado individual de cada proveedor registrado.
+create table if not exists public.bioreq_supplier_searches (
+  request_id text primary key references public.bioreq_requests(id) on delete cascade,
+  status text not null default 'ABIERTO' check (status in ('ABIERTO', 'CERRADO', 'REABIERTO')),
+  opened_at timestamptz not null default now(),
+  sent_to_df_at timestamptz,
+  closed_at timestamptz,
+  reopened_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists bioreq_supplier_searches_status_idx on public.bioreq_supplier_searches (status, updated_at);
+
 insert into public.bioreq_users (id, username, role, full_name, password_hash)
 values
   ('u1', 'andf01', 'ANDF_ADF', 'Juan Pérez (ANDF/ADF)', extensions.crypt('123', extensions.gen_salt('bf'))),
@@ -168,3 +182,4 @@ alter table public.bioreq_history enable row level security;
 alter table public.bioreq_supplier_registrations enable row level security;
 alter table public.bioreq_notifications enable row level security;
 alter table public.bioreq_supplier_history enable row level security;
+alter table public.bioreq_supplier_searches enable row level security;
