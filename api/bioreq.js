@@ -95,6 +95,18 @@ function mapSupplierRegistration(row) {
     };
 }
 
+function mapSupplierSearch(row) {
+    return {
+        requestId: row.request_id,
+        status: row.status || 'ABIERTO',
+        openedAt: row.opened_at,
+        sentToDfAt: row.sent_to_df_at,
+        closedAt: row.closed_at,
+        reopenedAt: row.reopened_at,
+        updatedAt: row.updated_at
+    };
+}
+
 async function sendNotificationEmail(to, subject, text) {
     // El envío real se activa al registrar RESEND_API_KEY y EMAIL_FROM en Vercel.
     // Mientras tanto la notificación se conserva en Supabase como trazabilidad.
@@ -127,7 +139,7 @@ async function getSession(req) {
     const roles = { ANDF: 'ANDF_ADF', SGID: 'SGID_CDF', LOG: 'LOG', SUPER_ADMIN: 'SUPER_ADMIN' };
     const selectableRoles = ['ANDF_ADF', 'SGID_CDF', 'LOG'];
     const activeRole = profile?.role === 'SUPER_ADMIN' && selectableRoles.includes(session.active_role) ? session.active_role : null;
-    return profile ? { id: profile.id, username: profile.email, role: activeRole || roles[profile.role] || profile.role, name: profile.full_name } : null;
+    return profile ? { id: profile.id, username: profile.email, role: activeRole || roles[profile.role] || profile.role, name: profile.full_name, isSig: profile.role === 'SUPER_ADMIN' } : null;
 }
 
 module.exports = async (req, res) => {
@@ -151,6 +163,10 @@ module.exports = async (req, res) => {
             if (req.query.providerRegistrations === '1') {
                 const registrations = await supabase('bioreq_supplier_registrations?select=*&order=created_at.asc');
                 return res.status(200).json({ items: registrations.map(mapSupplierRegistration) });
+            }
+            if (req.query.supplierSearches === '1') {
+                const searches = await supabase('bioreq_supplier_searches?select=*&order=opened_at.asc');
+                return res.status(200).json({ items: searches.map(mapSupplierSearch) });
             }
             if (req.query.preview) {
                 const prefix = req.query.preview;
@@ -233,6 +249,59 @@ module.exports = async (req, res) => {
                 method: 'POST', prefer: 'return=minimal', body: JSON.stringify({ supplier_registration_id: provider.id, old_status: oldStatus, new_status: data.status, action: data.action || 'actualizar_estado', user_id: currentUser.id, user_role: currentUser.role, user_name: currentUser.name, comment: data.comment || null })
             });
             return res.status(200).json({ provider: mapSupplierRegistration(savedRows[0]) });
+        }
+
+        if (action === 'update_supplier_search') {
+            if (!data.requestId || !data.operation) return res.status(400).json({ error: 'La búsqueda y la operación son obligatorias.' });
+            const requestRows = await supabase(`bioreq_requests?id=eq.${encodeURIComponent(data.requestId)}&select=id,req_number,requester_id,request_data`);
+            const request = requestRows[0];
+            if (!request) return res.status(404).json({ error: 'Requerimiento no encontrado.' });
+            const searchRows = await supabase(`bioreq_supplier_searches?request_id=eq.${encodeURIComponent(data.requestId)}&select=*`);
+            const existing = searchRows[0] || null;
+            const oldStatus = existing?.status || 'ABIERTO';
+            const now = new Date().toISOString();
+
+            if (data.operation === 'send_to_df') {
+                if (!['LOG', 'SUPER_ADMIN'].includes(currentUser.role)) return res.status(403).json({ error: 'Solo Logística puede enviar proveedores a Desarrollo Farmacéutico.' });
+                if (oldStatus === 'CERRADO') return res.status(409).json({ error: 'La búsqueda está cerrada. Reábrela antes de enviar proveedores.' });
+                const rows = await supabase('bioreq_supplier_searches', {
+                    method: 'POST', prefer: 'resolution=merge-duplicates,return=representation',
+                    body: JSON.stringify({ request_id: request.id, status: oldStatus, opened_at: existing?.opened_at || now, sent_to_df_at: now, closed_at: null, reopened_at: existing?.reopened_at || null, updated_at: now })
+                });
+                return res.status(200).json({ search: mapSupplierSearch(rows[0]) });
+            }
+
+            if (data.operation === 'close') {
+                if (!['LOG', 'SUPER_ADMIN'].includes(currentUser.role)) return res.status(403).json({ error: 'Solo Logística puede cerrar la búsqueda de proveedores.' });
+                if (!existing?.sent_to_df_at) return res.status(409).json({ error: 'Primero debes enviar los proveedores a revisión de Desarrollo Farmacéutico.' });
+                if (oldStatus === 'CERRADO') return res.status(409).json({ error: 'La búsqueda ya se encuentra cerrada.' });
+                const rows = await supabase(`bioreq_supplier_searches?request_id=eq.${encodeURIComponent(request.id)}`, {
+                    method: 'PATCH', prefer: 'return=representation', body: JSON.stringify({ status: 'CERRADO', closed_at: now, updated_at: now })
+                });
+                return res.status(200).json({ search: mapSupplierSearch(rows[0]) });
+            }
+
+            if (data.operation === 'reopen') {
+                const isLogistics = ['LOG', 'SUPER_ADMIN'].includes(currentUser.role);
+                const isRequester = currentUser.role === 'ANDF_ADF' && (request.requester_id === currentUser.id || currentUser.isSig);
+                if (!isLogistics && !isRequester) return res.status(403).json({ error: 'Solo Logística o el solicitante de Desarrollo Farmacéutico pueden reabrir esta búsqueda.' });
+                if (!existing || oldStatus !== 'CERRADO') return res.status(409).json({ error: 'Solo es posible reabrir una búsqueda cerrada.' });
+                const rows = await supabase(`bioreq_supplier_searches?request_id=eq.${encodeURIComponent(request.id)}`, {
+                    method: 'PATCH', prefer: 'return=representation', body: JSON.stringify({ status: 'REABIERTO', reopened_at: now, closed_at: null, updated_at: now })
+                });
+                if (isRequester && !isLogistics) {
+                    const logisticsProfiles = await supabase('bioreq_user_profiles?role=eq.LOG&is_active=eq.true&select=id,email');
+                    const product = request.request_data?.productName || 'el requerimiento';
+                    await Promise.all(logisticsProfiles.map(async profile => {
+                        const message = `Desarrollo Farmacéutico reabrió la búsqueda de proveedores para ${request.req_number} (${product}).`;
+                        const emailSent = await sendNotificationEmail(profile.email, `BIOREQ: búsqueda reabierta para ${request.req_number}`, message);
+                        await supabase('bioreq_notifications', { method: 'POST', prefer: 'return=minimal', body: JSON.stringify({ request_id: request.id, recipient_id: profile.id, recipient_email: profile.email, message, status: emailSent ? 'ENVIADO' : 'PENDIENTE_CONFIGURACION', created_by: currentUser.id }) });
+                    }));
+                }
+                return res.status(200).json({ search: mapSupplierSearch(rows[0]) });
+            }
+
+            return res.status(400).json({ error: 'Operación de búsqueda no reconocida.' });
         }
 
         if (action === 'notify_requester') {
