@@ -4,17 +4,51 @@ let autosaveTimer = null;
 let autosaveInProgress = false;
 let autosaveDirty = false;
 let formSubmissionInProgress = false;
+let loadingRequests = 0;
+let loadingTimer = null;
+
+function beginLoading(message = 'Actualizando información…') {
+    loadingRequests += 1;
+    const indicator = document.getElementById('loading-indicator');
+    const label = document.getElementById('loading-indicator-label');
+    if (!indicator || !label) return;
+
+    label.textContent = message;
+    clearTimeout(loadingTimer);
+    // Evita mostrar el indicador en operaciones casi instantáneas.
+    loadingTimer = setTimeout(() => {
+        if (loadingRequests > 0) indicator.classList.remove('opacity-0', 'translate-y-2', 'pointer-events-none');
+    }, 180);
+}
+
+function endLoading() {
+    loadingRequests = Math.max(0, loadingRequests - 1);
+    if (loadingRequests > 0) return;
+    clearTimeout(loadingTimer);
+    document.getElementById('loading-indicator')?.classList.add('opacity-0', 'translate-y-2', 'pointer-events-none');
+}
+
+async function withLoading(task, message) {
+    beginLoading(message);
+    try {
+        return await task();
+    } finally {
+        endLoading();
+    }
+}
 
 async function loadDatabase() {
-    const response = await fetch('/api/bioreq');
-    if (!response.ok) throw new Error('No se pudo cargar la información de Supabase.');
-    const data = await response.json();
-    db.requests = data.requests;
-    db.history = data.history;
-    const catalogResponse = await fetch('/api/bioreq?catalog=1');
-    if (catalogResponse.ok) db.catalogItems = (await catalogResponse.json()).items || [];
-    const suppliersResponse = await fetch('/api/bioreq?suppliers=1');
-    if (suppliersResponse.ok) db.suppliers = (await suppliersResponse.json()).items || [];
+    return withLoading(async () => {
+        const response = await fetch('/api/bioreq');
+        if (!response.ok) throw new Error('No se pudo cargar la información de Supabase.');
+        const data = await response.json();
+        db.requests = data.requests;
+        db.history = data.history;
+        const catalogResponse = await fetch('/api/bioreq?catalog=1');
+        if (catalogResponse.ok) db.catalogItems = (await catalogResponse.json()).items || [];
+        const suppliersResponse = await fetch('/api/bioreq?suppliers=1');
+        if (suppliersResponse.ok) db.suppliers = (await suppliersResponse.json()).items || [];
+    }, 'Actualizando información…');
 }
 
 async function loadDraftCodePreview() {
@@ -115,15 +149,17 @@ function getPriorityBadge(priorityId) {
 
 // --- 3. DATABASE OPERATIONS ---
 async function saveRequest(data, action) {
-    const response = await fetch('/api/bioreq', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, action, user: currentUser })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'No se pudo guardar el requerimiento.');
-    await loadDatabase();
-    return result.request;
+    return withLoading(async () => {
+        const response = await fetch('/api/bioreq', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data, action, user: currentUser })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'No se pudo guardar el requerimiento.');
+        await loadDatabase();
+        return result.request;
+    }, 'Guardando cambios…');
 }
 
 function getRequestsByRole() {
@@ -857,6 +893,7 @@ function loginWithMicrosoft() { window.location.assign('/api/auth?action=microso
 function openSigRoleChooser() { sigRoleChooserOpen = true; renderApp(); }
 function cancelSigRoleChooser() { sigRoleChooserOpen = false; renderApp(); }
 async function selectSigRole(role) {
+    beginLoading('Cambiando perfil…');
     try {
         const response = await fetch('/api/auth?action=select-role', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role })
@@ -870,10 +907,13 @@ async function selectSigRole(role) {
         renderApp();
     } catch (error) {
         showToast(error.message, 'error');
+    } finally {
+        endLoading();
     }
 }
 
 async function restoreSession() {
+    beginLoading('Iniciando sesión…');
     try {
         const response = await fetch('/api/auth?action=session');
         const result = await response.json();
@@ -892,9 +932,16 @@ async function restoreSession() {
             errorBox.classList.remove('hidden');
             window.history.replaceState({}, document.title, window.location.pathname);
         }
+    } finally {
+        endLoading();
     }
 }
-async function logout() { await fetch('/api/auth?action=logout', { method: 'POST' }); currentUser = null; currentView = 'dashboard'; renderApp(); }
+async function logout() {
+    await withLoading(() => fetch('/api/auth?action=logout', { method: 'POST' }), 'Cerrando sesión…');
+    currentUser = null;
+    currentView = 'dashboard';
+    renderApp();
+}
 function getLastObservation(reqId) { const obs = db.history.filter(h => h.requestId === reqId && h.newStatus === STATUS.OBSERVADO).reverse(); return obs.length ? obs[0].comment : ''; }
 
 window.onload = restoreSession;
