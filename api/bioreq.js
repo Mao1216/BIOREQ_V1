@@ -95,6 +95,31 @@ function mapSupplierRegistration(row) {
     };
 }
 
+function mapProductSupplier(row) {
+    return {
+        id: row.id,
+        productCode: row.product_code,
+        productName: row.product_name,
+        supplierName: row.supplier_name,
+        manufacturer: row.manufacturer,
+        origin: row.origin,
+        moqs: row.moqs || [],
+        currency: row.currency,
+        deliveryTime: row.delivery_time,
+        purchaseOrderType: row.purchase_order_type,
+        paymentTerms: row.payment_terms,
+        invoiceType: row.invoice_type,
+        incoterm: row.incoterm,
+        workingStandard: row.working_standard,
+        wsCost: row.ws_cost,
+        observations: row.observations,
+        documentation: row.documentation || [],
+        source: row.source,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}
+
 function mapSupplierSearch(row) {
     return {
         requestId: row.request_id,
@@ -163,6 +188,10 @@ module.exports = async (req, res) => {
             if (req.query.providerRegistrations === '1') {
                 const registrations = await supabase('bioreq_supplier_registrations?select=*&order=created_at.asc');
                 return res.status(200).json({ items: registrations.map(mapSupplierRegistration) });
+            }
+            if (req.query.productSuppliers === '1') {
+                const suppliers = await supabase('bioreq_product_suppliers?is_active=eq.true&select=*&order=product_code.asc,supplier_name.asc');
+                return res.status(200).json({ items: suppliers.map(mapProductSupplier) });
             }
             if (req.query.supplierSearches === '1') {
                 const searches = await supabase('bioreq_supplier_searches?select=*&order=opened_at.asc');
@@ -250,6 +279,7 @@ module.exports = async (req, res) => {
             });
             return res.status(200).json({ provider: mapSupplierRegistration(savedRows[0]) });
         }
+
 
         if (action === 'update_supplier_search') {
             if (!data.requestId || !data.operation) return res.status(400).json({ error: 'La búsqueda y la operación son obligatorias.' });
