@@ -69,6 +69,44 @@ function mapHistory(row) {
     };
 }
 
+function mapSupplierRegistration(row) {
+    return {
+        id: row.id,
+        requestId: row.request_id,
+        productCode: row.product_code,
+        supplierName: row.supplier_name,
+        manufacturer: row.manufacturer,
+        origin: row.origin,
+        moqs: row.moqs || [],
+        currency: row.currency,
+        deliveryTime: row.delivery_time,
+        purchaseOrderType: row.purchase_order_type,
+        paymentTerms: row.payment_terms,
+        invoiceType: row.invoice_type,
+        incoterm: row.incoterm,
+        workingStandard: row.working_standard,
+        wsCost: row.ws_cost,
+        observations: row.observations,
+        documentation: row.documentation || [],
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}
+
+async function sendNotificationEmail(to, subject, text) {
+    // El envío real se activa al registrar RESEND_API_KEY y EMAIL_FROM en Vercel.
+    // Mientras tanto la notificación se conserva en Supabase como trazabilidad.
+    if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return false;
+    const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [to], subject, text })
+    });
+    if (!response.ok) throw new Error('No se pudo enviar el correo de notificación.');
+    return true;
+}
+
 async function addHistory(entry) {
     await supabase('bioreq_history', {
         method: 'POST',
@@ -109,6 +147,10 @@ module.exports = async (req, res) => {
                 const suppliers = await supabase('bioreq_suppliers?is_active=eq.true&select=code,name,category,contact_email,phone&order=name.asc');
                 return res.status(200).json({ items: suppliers });
             }
+            if (req.query.providerRegistrations === '1') {
+                const registrations = await supabase('bioreq_supplier_registrations?select=*&order=created_at.asc');
+                return res.status(200).json({ items: registrations.map(mapSupplierRegistration) });
+            }
             if (req.query.preview) {
                 const prefix = req.query.preview;
                 const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Lima', year: '2-digit', month: '2-digit' }).formatToParts(new Date());
@@ -128,6 +170,61 @@ module.exports = async (req, res) => {
 
         const { data, action } = req.body || {};
         if (!data) return res.status(400).json({ error: 'Solicitud incompleta.' });
+
+        if (action === 'save_provider') {
+            if (![ 'LOG', 'SUPER_ADMIN' ].includes(currentUser.role)) return res.status(403).json({ error: 'Solo Logística puede registrar proveedores.' });
+            if (!data.requestId || !String(data.supplierName || '').trim()) return res.status(400).json({ error: 'La solicitud y el proveedor son obligatorios.' });
+            const providerData = {
+                request_id: data.requestId,
+                product_code: data.productCode || null,
+                supplier_name: data.supplierName.trim(),
+                manufacturer: data.manufacturer || null,
+                origin: data.origin || null,
+                moqs: Array.isArray(data.moqs) ? data.moqs : [],
+                currency: data.currency || null,
+                delivery_time: data.deliveryTime || null,
+                purchase_order_type: data.purchaseOrderType || null,
+                payment_terms: data.paymentTerms || null,
+                invoice_type: data.invoiceType || null,
+                incoterm: data.incoterm || null,
+                working_standard: data.workingStandard || null,
+                ws_cost: data.wsCost || null,
+                observations: data.observations || null,
+                documentation: Array.isArray(data.documentation) ? data.documentation : [],
+                updated_at: new Date().toISOString()
+            };
+            let saved;
+            if (data.id) {
+                const rows = await supabase(`bioreq_supplier_registrations?id=eq.${encodeURIComponent(data.id)}`, {
+                    method: 'PATCH', prefer: 'return=representation', body: JSON.stringify(providerData)
+                });
+                saved = rows[0];
+            } else {
+                const rows = await supabase('bioreq_supplier_registrations', {
+                    method: 'POST', prefer: 'return=representation', body: JSON.stringify({ ...providerData, created_by: currentUser.id })
+                });
+                saved = rows[0];
+            }
+            return res.status(200).json({ provider: mapSupplierRegistration(saved) });
+        }
+
+        if (action === 'notify_requester') {
+            if (![ 'LOG', 'SUPER_ADMIN' ].includes(currentUser.role)) return res.status(403).json({ error: 'Solo Logística puede notificar al solicitante.' });
+            const requests = await supabase(`bioreq_requests?id=eq.${encodeURIComponent(data.requestId)}&select=id,req_number,requester_id,request_data`);
+            const request = requests[0];
+            if (!request) return res.status(404).json({ error: 'Requerimiento no encontrado.' });
+            const profiles = await supabase(`bioreq_user_profiles?id=eq.${encodeURIComponent(request.requester_id)}&select=email,full_name`);
+            const recipient = profiles[0];
+            if (!recipient?.email) return res.status(404).json({ error: 'No se encontró el correo del solicitante.' });
+            const product = request.request_data?.productName || 'tu requerimiento';
+            const message = `Logística ya registró proveedores para ${request.req_number} (${product}). Ingresa a BIOREQ para revisarlos.`;
+            const emailSent = await sendNotificationEmail(recipient.email, `BIOREQ: proveedores encontrados para ${request.req_number}`, message);
+            const rows = await supabase('bioreq_notifications', {
+                method: 'POST', prefer: 'return=representation',
+                body: JSON.stringify({ request_id: request.id, recipient_id: request.requester_id, recipient_email: recipient.email, message, status: emailSent ? 'ENVIADO' : 'PENDIENTE_CONFIGURACION', created_by: currentUser.id })
+            });
+            return res.status(200).json({ notification: rows[0], emailSent });
+        }
         const { _comment, ...persistedData } = data;
 
         const now = new Date().toISOString();
