@@ -71,10 +71,13 @@ create table if not exists public.bioreq_supplier_registrations (
   ws_cost text,
   observations text,
   documentation jsonb not null default '[]'::jsonb,
+  status text not null default 'BORRADOR',
   created_by text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.bioreq_supplier_registrations add column if not exists status text not null default 'BORRADOR';
 
 create index if not exists bioreq_supplier_registrations_request_idx on public.bioreq_supplier_registrations (request_id, created_at);
 create index if not exists bioreq_supplier_registrations_product_idx on public.bioreq_supplier_registrations (product_code, created_at);
@@ -92,6 +95,21 @@ create table if not exists public.bioreq_notifications (
 );
 
 create index if not exists bioreq_notifications_request_idx on public.bioreq_notifications (request_id, created_at);
+
+create table if not exists public.bioreq_supplier_history (
+  id uuid primary key default gen_random_uuid(),
+  supplier_registration_id uuid not null references public.bioreq_supplier_registrations(id) on delete cascade,
+  old_status text,
+  new_status text not null,
+  action text not null,
+  user_id text not null,
+  user_role text not null,
+  user_name text not null,
+  comment text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists bioreq_supplier_history_registration_idx on public.bioreq_supplier_history (supplier_registration_id, created_at);
 
 insert into public.bioreq_users (id, username, role, full_name, password_hash)
 values
@@ -149,3 +167,4 @@ alter table public.bioreq_requests enable row level security;
 alter table public.bioreq_history enable row level security;
 alter table public.bioreq_supplier_registrations enable row level security;
 alter table public.bioreq_notifications enable row level security;
+alter table public.bioreq_supplier_history enable row level security;
