@@ -52,6 +52,47 @@ create index if not exists bioreq_requests_status_idx on public.bioreq_requests 
 create index if not exists bioreq_history_request_idx on public.bioreq_history (request_id, created_at);
 create index if not exists bioreq_sessions_user_idx on public.bioreq_sessions (user_id, expires_at);
 
+-- Proveedores encontrados por Logística para cada requerimiento aprobado.
+create table if not exists public.bioreq_supplier_registrations (
+  id uuid primary key default gen_random_uuid(),
+  request_id text not null references public.bioreq_requests(id) on delete cascade,
+  product_code text,
+  supplier_name text not null,
+  manufacturer text,
+  origin text,
+  moqs jsonb not null default '[]'::jsonb,
+  currency text,
+  delivery_time text,
+  purchase_order_type text,
+  payment_terms text,
+  invoice_type text,
+  incoterm text,
+  working_standard text,
+  ws_cost text,
+  observations text,
+  documentation jsonb not null default '[]'::jsonb,
+  created_by text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists bioreq_supplier_registrations_request_idx on public.bioreq_supplier_registrations (request_id, created_at);
+create index if not exists bioreq_supplier_registrations_product_idx on public.bioreq_supplier_registrations (product_code, created_at);
+
+-- Trazabilidad de avisos enviados por Logística al solicitante.
+create table if not exists public.bioreq_notifications (
+  id uuid primary key default gen_random_uuid(),
+  request_id text not null references public.bioreq_requests(id) on delete cascade,
+  recipient_id text not null,
+  recipient_email text not null,
+  message text not null,
+  status text not null default 'PENDIENTE_CONFIGURACION',
+  created_by text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists bioreq_notifications_request_idx on public.bioreq_notifications (request_id, created_at);
+
 insert into public.bioreq_users (id, username, role, full_name, password_hash)
 values
   ('u1', 'andf01', 'ANDF_ADF', 'Juan Pérez (ANDF/ADF)', extensions.crypt('123', extensions.gen_salt('bf'))),
@@ -106,3 +147,5 @@ alter table public.bioreq_users enable row level security;
 alter table public.bioreq_sessions enable row level security;
 alter table public.bioreq_requests enable row level security;
 alter table public.bioreq_history enable row level security;
+alter table public.bioreq_supplier_registrations enable row level security;
+alter table public.bioreq_notifications enable row level security;
