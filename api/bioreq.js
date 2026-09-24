@@ -28,6 +28,19 @@ function prefixForStatus(status) {
     return null;
 }
 
+function isAllowedStatusTransition(fromStatus, toStatus) {
+    if (fromStatus === toStatus) return true;
+    const transitions = {
+        'BORRADOR': ['EN REVISIÓN', 'CANCELADO'],
+        'EN REVISIÓN': ['OBSERVADO', 'APROBACIÓN PENDIENTE – LOG', 'APROBADO', 'CANCELADO'],
+        'OBSERVADO': ['EN REVISIÓN', 'CANCELADO'],
+        'APROBACIÓN PENDIENTE – LOG': ['OBSERVADO', 'APROBADO', 'CANCELADO'],
+        'APROBADO': [],
+        'CANCELADO': []
+    };
+    return transitions[fromStatus]?.includes(toStatus) || false;
+}
+
 function mapRequest(row) {
     return {
         ...row.request_data,
@@ -126,6 +139,9 @@ module.exports = async (req, res) => {
             if (!rows.length) return res.status(404).json({ error: 'Requerimiento no encontrado.' });
             const previous = rows[0];
             oldStatus = previous.status;
+            if (!isAllowedStatusTransition(oldStatus, data.status)) {
+                return res.status(409).json({ error: `No se puede cambiar el estado de ${oldStatus} a ${data.status}.` });
+            }
             let requestCode = previous.req_number;
             const prefix = prefixForStatus(data.status);
             if (prefix && !requestCode.startsWith(`${prefix}-`)) {
